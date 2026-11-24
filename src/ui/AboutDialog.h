@@ -35,6 +35,8 @@ private:
     QLabel* m_qtValue = nullptr;
     QLabel* m_daemonCaption = nullptr;
     QLabel* m_daemonValue = nullptr;
+    QLabel* m_repoCaption = nullptr;
+    QLabel* m_repoValue = nullptr;
     QDialogButtonBox* m_buttonBox = nullptr;
 };
 

@@ -107,6 +107,7 @@ void AppTranslator::initTurkishDictionary()
     add("MIT License", "MIT Lisansı");
     add("Qt Version:", "Qt Sürümü:");
     add("Daemon:", "Servis:");
+    add("Repository:", "Depo:");
     add("Not connected", "Bağlı değil");
 
     // Tabs

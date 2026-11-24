@@ -54,6 +54,15 @@ AboutDialog::AboutDialog(const HealthInfo& health, QWidget* parent)
     m_daemonValue = new QLabel(this);
     form->addRow(m_daemonCaption, m_daemonValue);
 
+    m_repoCaption = new QLabel(this);
+    m_repoValue = new QLabel(
+        QStringLiteral("<a href=\"https://github.com/Findowry/CCQtUpon\">https://github.com/Findowry/CCQtUpon</a>"),
+        this);
+    m_repoValue->setTextFormat(Qt::RichText);
+    m_repoValue->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    m_repoValue->setOpenExternalLinks(true);
+    form->addRow(m_repoCaption, m_repoValue);
+
     root->addLayout(form);
 
     m_buttonBox = new QDialogButtonBox(QDialogButtonBox::Close, this);
@@ -82,6 +91,7 @@ void AboutDialog::retranslateUi()
     } else {
         m_daemonValue->setText(tr("Not connected"));
     }
+    m_repoCaption->setText(tr("Repository:"));
 
     if (QPushButton* closeBtn = m_buttonBox->button(QDialogButtonBox::Close)) {
         closeBtn->setText(tr("Close"));

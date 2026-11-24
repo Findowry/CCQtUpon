@@ -894,7 +894,7 @@ PlasmoidItem {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 visible: root.fanChannels.length === 0
-                iconName: "speedometer"
+                icon.name: "speedometer"
                 text: root.connState === "connected"
                     ? i18n("No controllable fan channels detected.")
                     : i18n("Waiting for CoolerControl daemon...")
