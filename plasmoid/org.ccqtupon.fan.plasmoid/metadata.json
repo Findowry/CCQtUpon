@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "CCQt Upon Contributors"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Monitor and control CoolerControl v5.1+ fan channels from the Plasma 6 panel",
+        "Description[tr]": "CoolerControl v5.1+ fan kanallarını Plasma 6 panelinden izleyin ve yönetin",
+        "EnabledByDefault": true,
+        "Icon": "speedometer",
+        "Id": "org.ccqtupon.fan.plasmoid",
+        "License": "MIT",
+        "Name": "CCQt Upon Fan Control",
+        "Name[tr]": "CCQt Upon Fan Kontrolü",
+        "Version": "0.1.0"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

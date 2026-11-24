@@ -54,6 +54,7 @@ public:
 
     QByteArray saveSplitterState() const;
     bool restoreSplitterState(const QByteArray& state);
+    void retranslateUi();
 
 protected:
     void changeEvent(QEvent* event) override;
@@ -88,7 +89,6 @@ private:
     void updateSelectedFanTelemetryHeader();
     void updateApplyEnabled();
     void refreshMutedPalettes();
-    void retranslateUi();
 
     const DeviceInfo* findDevice(const QString& uid) const;
     const ChannelInfo* findChannel(const DeviceInfo& dev, const QString& channelName) const;

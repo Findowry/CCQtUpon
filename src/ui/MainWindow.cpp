@@ -850,21 +850,28 @@ void MainWindow::refreshProfilesListUi()
 
 QString MainWindow::formatProfileSummary(const ProfileInfo& profile) const
 {
+    const QString displayName = (profile.uid == QLatin1String("0")
+                                 && profile.name == QLatin1String("Unmanaged"))
+        ? tr("Unmanaged")
+        : profile.name;
     const QString translatedType = tr(profile.type.toUtf8().constData());
     if (profile.type == QLatin1String("Fixed") && profile.speedFixed.has_value()) {
-        return QStringLiteral("%1 · %2 · %3%").arg(profile.name, translatedType).arg(*profile.speedFixed);
+        return QStringLiteral("%1 · %2 · %3%")
+            .arg(displayName, translatedType)
+            .arg(*profile.speedFixed);
     }
     if (profile.type == QLatin1String("Graph") && profile.tempMin.has_value()
         && profile.tempMax.has_value()) {
         return QStringLiteral("%1 · %2 · %3–%4 °C")
-            .arg(profile.name, translatedType)
+            .arg(displayName, translatedType)
             .arg(QString::number(*profile.tempMin, 'f', 0),
                  QString::number(*profile.tempMax, 'f', 0));
     }
     if (profile.type == QLatin1String("Mix") && !profile.mixFunctionType.isEmpty()) {
-        return QStringLiteral("%1 · %2 (%3)").arg(profile.name, translatedType, profile.mixFunctionType);
+        return QStringLiteral("%1 · %2 (%3)")
+            .arg(displayName, translatedType, profile.mixFunctionType);
     }
-    return QStringLiteral("%1 · %2").arg(profile.name, translatedType);
+    return QStringLiteral("%1 · %2").arg(displayName, translatedType);
 }
 
 void MainWindow::updateConnectionIndicators()
@@ -954,6 +961,10 @@ void MainWindow::retranslateUi()
     if (m_tabs != nullptr) {
         m_tabs->setTabText(0, tr("Overview"));
         m_tabs->setTabText(1, tr("Cooling"));
+    }
+
+    if (m_coolingTab != nullptr) {
+        m_coolingTab->retranslateUi();
     }
 
     refreshModesUi();

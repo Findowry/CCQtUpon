@@ -5,108 +5,34 @@
 #include <QEvent>
 #include <QFont>
 #include <QFormLayout>
-#include <QHBoxLayout>
 #include <QLabel>
-#include <QPainter>
-#include <QPainterPath>
 #include <QPalette>
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include <algorithm>
-#include <cmath>
-
 namespace ccqt {
-namespace {
-
-class EmblemWidget : public QWidget {
-public:
-    explicit EmblemWidget(QWidget* parent = nullptr)
-        : QWidget(parent)
-    {
-        setFixedSize(48, 48);
-    }
-
-protected:
-    void paintEvent(QPaintEvent* event) override
-    {
-        Q_UNUSED(event)
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing, true);
-
-        const qreal c = width() * 0.5;
-        const qreal r = width() * 0.43;
-
-        QColor accent = palette().color(QPalette::Highlight);
-        if (!accent.isValid()) {
-            accent = QColor(46, 158, 214);
-        }
-
-        QColor bg = palette().color(QPalette::Base);
-        bg.setAlpha(210);
-        p.setPen(QPen(accent, 2.2));
-        p.setBrush(bg);
-        p.drawEllipse(QPointF(c, c), r, r);
-
-        p.setPen(Qt::NoPen);
-        p.setBrush(accent);
-        for (int i = 0; i < 3; ++i) {
-            const qreal baseAngle = i * (2.0 * M_PI / 3.0) - M_PI / 2.0;
-            const qreal tipAngle = baseAngle + 0.55;
-            const qreal midAngle = baseAngle + 0.95;
-
-            QPainterPath blade;
-            blade.moveTo(c, c);
-            blade.quadTo(c + std::cos(tipAngle) * r * 0.85,
-                         c + std::sin(tipAngle) * r * 0.85,
-                         c + std::cos(midAngle) * r * 0.68,
-                         c + std::sin(midAngle) * r * 0.68);
-            blade.quadTo(c + std::cos(baseAngle + 0.22) * r * 0.35,
-                         c + std::sin(baseAngle + 0.22) * r * 0.35,
-                         c, c);
-            p.drawPath(blade);
-        }
-
-        p.setBrush(palette().color(QPalette::WindowText));
-        p.drawEllipse(QPointF(c, c), width() * 0.08, width() * 0.08);
-    }
-};
-
-} // namespace
 
 AboutDialog::AboutDialog(const HealthInfo& health, QWidget* parent)
     : QDialog(parent)
     , m_health(health)
 {
     setModal(true);
-    setMinimumWidth(400);
+    setMinimumWidth(380);
 
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(18, 16, 18, 16);
-    root->setSpacing(14);
-
-    auto* headerRow = new QHBoxLayout();
-    headerRow->setSpacing(14);
-
-    auto* emblem = new EmblemWidget(this);
-    headerRow->addWidget(emblem, 0, Qt::AlignTop);
-
-    auto* titleCol = new QVBoxLayout();
-    titleCol->setSpacing(4);
+    root->setSpacing(12);
 
     m_titleLabel = new QLabel(this);
     QFont titleFont = m_titleLabel->font();
     titleFont.setBold(true);
     titleFont.setPointSizeF(titleFont.pointSizeF() + 3.0);
     m_titleLabel->setFont(titleFont);
-    titleCol->addWidget(m_titleLabel);
+    root->addWidget(m_titleLabel);
 
     m_descLabel = new QLabel(this);
     m_descLabel->setWordWrap(true);
-    titleCol->addWidget(m_descLabel);
-
-    headerRow->addLayout(titleCol, 1);
-    root->addLayout(headerRow);
+    root->addWidget(m_descLabel);
 
     auto* form = new QFormLayout();
     form->setHorizontalSpacing(14);

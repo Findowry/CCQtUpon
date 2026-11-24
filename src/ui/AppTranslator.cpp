@@ -197,12 +197,15 @@ void AppTranslator::initTurkishDictionary()
     add("Unmanaged", "Yönetimsiz");
     add("Apply", "Uygula");
     add("Target: %1%", "Hedef: %1%");
-    add("Live Duty", "Anlık Duty");
-    add("Target Duty", "Hedef Duty");
-    add("Duty (%)", "Duty (%)");
+    add("Live Duty", "Anlık Hız");
+    add("Target Duty", "Hedef Hız");
+    add("Duty (%)", "Hız (%)");
     add("RPM", "RPM");
+    add("-120s", "-120 sn");
+    add("-60s", "-60 sn");
     add("Now", "Şimdi");
     add("Collecting fan history...", "Fan geçmişi toplanıyor...");
+    add("Default Function", "Varsayılan Fonksiyon");
     add("Profile:", "Profil:");
     add("Type:", "Tür:");
     add("Temp Source:", "Sıcaklık Kaynağı:");
@@ -223,14 +226,14 @@ void AppTranslator::initTurkishDictionary()
     // AuthDialog
     add("CoolerControl Connection Setup", "CoolerControl Bağlantı Kurulumu");
     add("Connection", "Bağlantı");
-    add("Daemon URL:", "Daemon URL:");
+    add("Daemon URL:", "Servis URL:");
     add("Self-signed TLS certificates are accepted automatically only for localhost / 127.0.0.1.",
         "Kendinden imzalı TLS sertifikaları yalnızca localhost / 127.0.0.1 için otomatik kabul edilir.");
-    add("Access Token:", "Access Token:");
+    add("Access Token:", "Erişim Anahtarı (Token):");
     add("Paste cc_... token here", "cc_... token'ını buraya yapıştırın");
     add("Show", "Göster");
     add("Hide", "Gizle");
-    add("Save Access Token locally (0600 permissions)", "Access Token'ı yerel olarak kaydet (0600 izinleriyle)");
+    add("Save Access Token locally (0600 permissions)", "Erişim Anahtarını yerel kaydet (0600 izinleriyle)");
     add("Language:", "Dil:");
     add("Test Connection", "Bağlantıyı Test Et");
     add("Testing connection...", "Bağlantı test ediliyor...");

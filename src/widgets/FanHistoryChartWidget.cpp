@@ -148,12 +148,12 @@ void FanHistoryChartWidget::paintEvent(QPaintEvent* event)
     // Bottom X axis labels (-120s, -60s, Now)
     p.setPen(mutedColor);
     const qreal xAxisY = plotRect.bottom() + 2.0;
-    p.drawText(QRectF(plotRect.left(), xAxisY, 50.0, fm.height()),
+    p.drawText(QRectF(plotRect.left(), xAxisY, 55.0, fm.height()),
                Qt::AlignLeft | Qt::AlignTop,
-               QStringLiteral("-120s"));
-    p.drawText(QRectF(plotRect.center().x() - 25.0, xAxisY, 50.0, fm.height()),
+               tr("-120s"));
+    p.drawText(QRectF(plotRect.center().x() - 28.0, xAxisY, 56.0, fm.height()),
                Qt::AlignCenter | Qt::AlignTop,
-               QStringLiteral("-60s"));
+               tr("-60s"));
     p.drawText(QRectF(plotRect.right() - 60.0, xAxisY, 60.0, fm.height()),
                Qt::AlignRight | Qt::AlignTop,
                tr("Now"));

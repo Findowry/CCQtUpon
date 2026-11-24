@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=CCQt Upon
+GenericName=CoolerControl Client
+GenericName[tr]=CoolerControl İstemcisi
+Comment=Native Qt6 desktop client for CoolerControl v5.1+
+Comment[tr]=CoolerControl v5.1+ için yerel Qt6 masaüstü istemcisi
+Exec=ccqtupon
+Icon=speedometer
+Terminal=false
+Categories=System;Monitor;Qt;
+StartupWMClass=ccqtupon

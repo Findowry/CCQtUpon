@@ -434,13 +434,17 @@ void DeviceCardWidget::populateChannelCombo(ChannelRow& row)
 
 QString DeviceCardWidget::formatProfileLabel(const ProfileInfo& profile) const
 {
+    const QString displayName = (profile.uid == QLatin1String("0")
+                                 && profile.name == QLatin1String("Unmanaged"))
+        ? tr("Unmanaged")
+        : profile.name;
     if (profile.type == QLatin1String("Default")) {
-        return profile.name;
+        return displayName;
     }
     if (profile.type == QLatin1String("Fixed") && profile.speedFixed.has_value()) {
-        return QStringLiteral("%1 (%2%)").arg(profile.name).arg(*profile.speedFixed);
+        return QStringLiteral("%1 (%2%)").arg(displayName).arg(*profile.speedFixed);
     }
-    return QStringLiteral("%1 (%2)").arg(profile.name, tr(profile.type.toUtf8().constData()));
+    return QStringLiteral("%1 (%2)").arg(displayName, tr(profile.type.toUtf8().constData()));
 }
 
 void DeviceCardWidget::retranslateUi()

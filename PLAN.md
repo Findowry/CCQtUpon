@@ -45,13 +45,16 @@ Ana pencere `SightProc` tarzında üstte `QTabWidget` yapısına geçer:
      - **`Profile` Modu:** Atanacak profili seçme (`QComboBox`), profil türünü (`Graph`/`Fixed`/`Default`/`Mix`/`Overlay`), sıcaklık kaynağını ve bağlı fonksiyonu (`Functions`) gösterme; `Graph` profilleri için **`QPainter` İnteraktif Fan Eğrisi Düzenleyicisi (`FanCurveEditorWidget`)** (X: sıcaklık `°C`, Y: `Duty %`, anlık sıcaklık dikey kesikli çizgi, anlık duty yatay çizgi, sürükle-bırak noktalar, çift tıkla nokta ekleme, sağ tıkla silme) + yanında/altında grafikle çift yönlü senkron çalışan **Points (`Temp °C`, `Duty %`)** tablosu; `Apply` ile `PUT /profiles` (değişiklik varsa, gerçek v5.1.1 `Profile` JSON şemasıyla) ve `PUT /devices/{uid}/settings/{ch}/profile` (`{"profile_uid": "..."}`).
      - **`Unmanaged` Modu:** Fanı donanım/BIOS varsayılanına döndüren açıklama ve `Apply` ile `PUT /devices/{uid}/settings/{ch}/reset`.
 
-## 6. Faz 3 (Sonraki Sürümler — Şimdi Kodlanmayacak)
-- KDE Plasma 6 panel widget'ı (Plasmoid).
+## 6. Faz 3 (Tamamlandı — Bağımsız KDE Plasma 6 Widget'ı)
+- `src/` kodundan tamamen bağımsız, saf Plasma 6 QML (`Kirigami` / `PlasmaComponents3` / `XMLHttpRequest`) widget paketi: `plasmoid/org.ccqtupon.fan.plasmoid/`.
+- Panelde 3 görünüm modu (`Icon only`, `Fan RPM`, `Fan Duty (%)`), açılır pencerede `Profile | Manual | Unmanaged` modları ve minik `Canvas` eğri önizlemesi; `401` durumunda throttle koruması ve çevrimdışı durumda `/handshake` yeniden bağlanma.
 
-## 7. Dizin Yapısı (Faz 2)
+## 7. Dizin Yapısı (v0.1.0)
 - `src/main.cpp`
 - `src/api/CoolerControlClient.{h,cpp}` (REST + Auth + Retry + Functions/Manual/Profile PUT)
 - `src/models/CoolerControlModels.{h,cpp}` (`Device`, `Channel`, `Mode`, `Profile`, `Function`, `NameOverrides`, `serializeProfile`)
 - `src/ui/` (`MainWindow`, `CoolingTabWidget`, `AuthDialog`, `AboutDialog`, `AppTranslator`)
 - `src/widgets/` (`StatusBanner`, `MetricBarWidget`, `DeviceCardWidget`, `FanGaugeWidget`, `FanHistoryChartWidget`, `FanCurveEditorWidget`)
+- `packaging/ccqtupon.desktop`
+- `plasmoid/org.ccqtupon.fan.plasmoid/` (`metadata.json`, `contents/config/{main.xml,config.qml}`, `contents/ui/{main.qml,configGeneral.qml,MiniCurveCanvas.qml}`)
 - `tests/ParserTests.cpp`

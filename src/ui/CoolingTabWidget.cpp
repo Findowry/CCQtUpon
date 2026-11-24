@@ -745,11 +745,14 @@ void CoolingTabWidget::refreshSidebarProfilesAndFunctions()
 {
     m_profilesList->clear();
     for (const ProfileInfo& p : std::as_const(m_profiles)) {
+        const QString displayName = (p.uid == QLatin1String("0") && p.name == QLatin1String("Unmanaged"))
+            ? tr("Unmanaged")
+            : p.name;
         const QString typeText = tr(p.type.toUtf8().constData());
-        auto* item = new QListWidgetItem(QStringLiteral("%1 · %2").arg(p.name, typeText),
+        auto* item = new QListWidgetItem(QStringLiteral("%1 · %2").arg(displayName, typeText),
                                          m_profilesList);
         item->setData(Qt::UserRole, p.uid);
-        item->setToolTip(p.name);
+        item->setToolTip(displayName);
     }
 
     m_functionsList->clear();
@@ -757,11 +760,15 @@ void CoolingTabWidget::refreshSidebarProfilesAndFunctions()
     m_functionsList->setVisible(hasFns);
     m_functionsEmptyLabel->setVisible(!hasFns);
     for (const FunctionInfo& fn : std::as_const(m_functions)) {
+        const QString displayName =
+            (fn.uid == QLatin1String("0") && fn.name == QLatin1String("Default Function"))
+            ? tr("Default Function")
+            : fn.name;
         const QString typeText = tr(fn.type.toUtf8().constData());
-        auto* item = new QListWidgetItem(QStringLiteral("%1 · %2").arg(fn.name, typeText),
+        auto* item = new QListWidgetItem(QStringLiteral("%1 · %2").arg(displayName, typeText),
                                          m_functionsList);
         item->setData(Qt::UserRole, fn.uid);
-        item->setToolTip(fn.name);
+        item->setToolTip(displayName);
     }
 }
 
@@ -885,10 +892,13 @@ void CoolingTabWidget::refreshProfileCombo()
     int targetIdx = -1;
 
     for (const ProfileInfo& p : std::as_const(m_profiles)) {
+        const QString displayName = (p.uid == QLatin1String("0") && p.name == QLatin1String("Unmanaged"))
+            ? tr("Unmanaged")
+            : p.name;
         const QString typeStr = tr(p.type.toUtf8().constData());
         const QString label = (p.type == QLatin1String("Default"))
-            ? p.name
-            : QStringLiteral("%1 (%2)").arg(p.name, typeStr);
+            ? displayName
+            : QStringLiteral("%1 (%2)").arg(displayName, typeStr);
         m_profileCombo->addItem(label, p.uid);
         m_profileCombo->setItemData(m_profileCombo->count() - 1, label, Qt::ToolTipRole);
         maxW = std::max(maxW, fm.horizontalAdvance(label));
@@ -965,7 +975,7 @@ void CoolingTabWidget::loadProfileIntoEditor(const QString& profileUid)
     } else {
         m_profileInnerStack->setCurrentIndex(2);
         const QString tName = m_editingProfile.type.isEmpty()
-            ? QStringLiteral("Default")
+            ? tr("Default")
             : tr(m_editingProfile.type.toUtf8().constData());
         m_otherProfileInfoLabel->setText(
             tr("This profile type (%1) is evaluated by coolercontrold and can be assigned directly with Apply.")
@@ -986,7 +996,7 @@ void CoolingTabWidget::refreshProfileMetaAndLiveTemp()
     }
 
     const QString tName = m_editingProfile.type.isEmpty()
-        ? QStringLiteral("Default")
+        ? tr("Default")
         : tr(m_editingProfile.type.toUtf8().constData());
     m_profileTypeValue->setText(tName);
 
@@ -1026,7 +1036,11 @@ void CoolingTabWidget::refreshProfileMetaAndLiveTemp()
     }
 
     if (const FunctionInfo* fn = findFunction(m_editingProfile.functionUid)) {
-        m_functionValue->setText(fn->name);
+        const QString fnName =
+            (fn->uid == QLatin1String("0") && fn->name == QLatin1String("Default Function"))
+            ? tr("Default Function")
+            : fn->name;
+        m_functionValue->setText(fnName);
     } else if (!m_editingProfile.functionUid.isEmpty()) {
         m_functionValue->setText(m_editingProfile.functionUid);
     } else {
@@ -1378,11 +1392,21 @@ void CoolingTabWidget::retranslateUi()
     refreshSidebarProfilesAndFunctions();
     refreshProfileCombo();
     refreshProfileMetaAndLiveTemp();
+    updateFanTreeTelemetry();
     updateSelectedFanTelemetryHeader();
+    if (m_fanGauge != nullptr) {
+        m_fanGauge->update();
+    }
+    if (m_historyChart != nullptr) {
+        m_historyChart->update();
+    }
+    if (m_curveEditor != nullptr) {
+        m_curveEditor->update();
+    }
     if (!m_editingProfile.uid.isEmpty() && m_editingProfile.type != QLatin1String("Graph")
         && m_editingProfile.type != QLatin1String("Fixed")) {
         const QString tName = m_editingProfile.type.isEmpty()
-            ? QStringLiteral("Default")
+            ? tr("Default")
             : tr(m_editingProfile.type.toUtf8().constData());
         m_otherProfileInfoLabel->setText(
             tr("This profile type (%1) is evaluated by coolercontrold and can be assigned directly with Apply.")
