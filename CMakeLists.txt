@@ -8,6 +8,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_AUTOMOC ON)
 
+include(GNUInstallDirs)
+option(INSTALL_PLASMOID "Install the Plasma 6 fan control plasmoid" ON)
+
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 
 add_library(ccqtupon_core STATIC
@@ -92,3 +95,17 @@ target_compile_options(ccqtupon_parser_tests
 )
 
 add_test(NAME parser_tests COMMAND ccqtupon_parser_tests)
+
+install(TARGETS ccqtupon
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(FILES packaging/ccqtupon.desktop
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+)
+
+if(INSTALL_PLASMOID)
+    install(DIRECTORY plasmoid/org.ccqtupon.fan.plasmoid/
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/plasma/plasmoids/org.ccqtupon.fan.plasmoid
+    )
+endif()

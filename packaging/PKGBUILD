@@ -1,0 +1,37 @@
+# Maintainer: Findowry
+pkgname=ccqtupon
+_reponame=CCQtUpon
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Ultra-lightweight native Qt6 desktop client and Plasma 6 widget for CoolerControl v5.1+"
+arch=('x86_64' 'aarch64')
+url="https://github.com/Findowry/CCQtUpon"
+license=('MIT')
+depends=('qt6-base' 'coolercontrold')
+makedepends=('cmake' 'ninja')
+optdepends=(
+    'coolercontrol: CoolerControl GUI web interface'
+    'plasma-workspace: for the optional Plasma 6 fan control plasmoid'
+)
+source=("$pkgname-$pkgver.tar.gz::https://github.com/Findowry/CCQtUpon/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "$_reponame-$pkgver"
+    cmake -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=None \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -Wno-author
+    cmake --build build
+}
+
+check() {
+    cd "$_reponame-$pkgver"
+    ctest --test-dir build --output-on-failure
+}
+
+package() {
+    cd "$_reponame-$pkgver"
+    DESTDIR="$pkgdir" cmake --install build
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

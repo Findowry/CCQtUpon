@@ -2,8 +2,8 @@
 Type=Application
 Version=1.0
 Name=CCQt Upon
-GenericName=CoolerControl Client
-GenericName[tr]=CoolerControl İstemcisi
+GenericName=QtWidgets based lightweight CoolerControl Client
+GenericName[tr]=QtWidgets tabanlı hafif CoolerControl İstemcisi
 Comment=Native Qt6 desktop client for CoolerControl v5.1+
 Comment[tr]=CoolerControl v5.1+ için yerel Qt6 masaüstü istemcisi
 Exec=ccqtupon
