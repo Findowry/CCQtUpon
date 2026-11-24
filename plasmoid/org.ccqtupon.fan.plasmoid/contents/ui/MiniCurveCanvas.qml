@@ -7,8 +7,6 @@ Canvas {
     property var profile: null
     property var liveTemp: null
     property var liveDuty: null
-    property int minDuty: 0
-    property int maxDuty: 100
 
     implicitHeight: Kirigami.Units.gridUnit * 4.5
     implicitWidth: Kirigami.Units.gridUnit * 12
@@ -16,8 +14,6 @@ Canvas {
     onProfileChanged: requestPaint()
     onLiveTempChanged: requestPaint()
     onLiveDutyChanged: requestPaint()
-    onMinDutyChanged: requestPaint()
-    onMaxDutyChanged: requestPaint()
     onWidthChanged: requestPaint()
     onHeightChanged: requestPaint()
 
@@ -179,7 +175,7 @@ Canvas {
         }
 
         // Live temp vertical dashed line & live duty horizontal dashed line
-        const warmCol = Qt.rgba(0.88, 0.55, 0.16, 0.95)
+        const warmCol = Kirigami.Theme.neutralTextColor
         if (liveTemp !== null && liveTemp !== undefined) {
             const lx = xForTemp(liveTemp)
             ctx.save()

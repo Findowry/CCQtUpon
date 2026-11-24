@@ -24,6 +24,8 @@ PlasmoidItem {
     // Draft UI choices keyed by fanKey so 1s status polls never reset user edits
     property var draftProfileByKey: ({})
     property var draftManualByKey: ({})
+    property var dirtyProfileByKey: ({})
+    property var dirtyManualByKey: ({})
     property var pendingByKey: ({})
 
     property string connState: "disconnected" // no_token, connecting, connected, auth_error, offline, rate_limited
@@ -41,11 +43,27 @@ PlasmoidItem {
     readonly property string accessToken: (Plasmoid.configuration.accessToken || "").trim()
     readonly property int pollMs: Math.max(500, Math.min(10000, Plasmoid.configuration.pollIntervalMs || 1000))
     readonly property int panelDisplayMode: Plasmoid.configuration.panelDisplayMode || 0
+    readonly property bool fullVisible: root.expanded
+        || Plasmoid.formFactor === PlasmaCore.Types.Planar
+        || Plasmoid.formFactor === PlasmaCore.Types.MediaCenter
+    readonly property bool needsActivePolling: root.panelDisplayMode !== 0 || root.fullVisible
 
     onDaemonUrlChanged: restartConnection()
     onAccessTokenChanged: {
         authFailedForToken = false
         restartConnection()
+    }
+    onExpandedChanged: function(isExpanded) {
+        if (isExpanded && root.connState === "connected") {
+            root.fetchStatus()
+            root.fetchProfiles()
+            root.refreshAllDeviceSettings()
+        }
+    }
+    onPanelDisplayModeChanged: {
+        if (panelDisplayMode !== 0 && connState === "connected") {
+            fetchStatus()
+        }
     }
 
     Component.onCompleted: restartConnection()
@@ -98,7 +116,7 @@ PlasmoidItem {
         id: pollTimer
         interval: root.pollMs
         repeat: true
-        running: root.connState === "connected"
+        running: root.connState === "connected" && root.needsActivePolling
         onTriggered: root.fetchStatus()
     }
 
@@ -119,6 +137,13 @@ PlasmoidItem {
                 root.restartConnection()
             }
         }
+    }
+
+    Timer {
+        id: writeNoticeTimer
+        interval: 4000
+        repeat: false
+        onTriggered: root.clearWriteNotice()
     }
 
     function normalizeUrl(raw) {
@@ -178,7 +203,9 @@ PlasmoidItem {
         statusInFlight = false
         handshakeInFlight = false
         rateLimitTimer.stop()
-        writeNoticeText = ""
+        clearWriteNotice()
+        dirtyProfileByKey = ({})
+        dirtyManualByKey = ({})
 
         if (!daemonUrl.startsWith("http://") && !daemonUrl.startsWith("https://")) {
             connState = "offline"
@@ -506,27 +533,65 @@ PlasmoidItem {
         syncDraftsFromSettings()
     }
 
+    function findChannelSetting(deviceUid, channelName) {
+        const settings = settingsByDevice[deviceUid] || []
+        for (let i = 0; i < settings.length; ++i) {
+            if (settings[i].channel_name === channelName) {
+                return settings[i]
+            }
+        }
+        return null
+    }
+
+    function activeModeForFan(deviceUid, channelName) {
+        const matched = findChannelSetting(deviceUid, channelName)
+        if (matched && matched.speed_fixed !== undefined && matched.speed_fixed !== null) {
+            return "manual"
+        }
+        if (matched && matched.profile_uid && matched.profile_uid !== "0") {
+            return "profile"
+        }
+        return "unmanaged"
+    }
+
+    function clearKeyDirty(key) {
+        const nextP = Object.assign({}, dirtyProfileByKey)
+        delete nextP[key]
+        dirtyProfileByKey = nextP
+        const nextM = Object.assign({}, dirtyManualByKey)
+        delete nextM[key]
+        dirtyManualByKey = nextM
+    }
+
+    function refreshAllDeviceSettings() {
+        if (connState !== "connected") {
+            return
+        }
+        for (let i = 0; i < cachedDevices.length; ++i) {
+            const dev = cachedDevices[i]
+            if (deviceHasControllableFans(dev)) {
+                fetchDeviceSettings(dev.uid)
+            }
+        }
+    }
+
     function syncDraftsFromSettings() {
         const nextProf = Object.assign({}, draftProfileByKey)
         const nextMan = Object.assign({}, draftManualByKey)
 
         for (let i = 0; i < fanChannels.length; ++i) {
             const fan = fanChannels[i]
-            const settings = settingsByDevice[fan.deviceUid] || []
-            let matched = null
-            for (let j = 0; j < settings.length; ++j) {
-                if (settings[j].channel_name === fan.channelName) {
-                    matched = settings[j]
-                    break
-                }
+            const matched = findChannelSetting(fan.deviceUid, fan.channelName)
+            const daemonProf = (matched && matched.profile_uid) ? matched.profile_uid : "0"
+            if (nextProf[fan.key] === undefined || !dirtyProfileByKey[fan.key]) {
+                nextProf[fan.key] = daemonProf
             }
-            if (nextProf[fan.key] === undefined) {
-                nextProf[fan.key] = (matched && matched.profile_uid) ? matched.profile_uid : "0"
-            }
-            if (nextMan[fan.key] === undefined) {
-                if (matched && matched.speed_fixed !== undefined && matched.speed_fixed !== null) {
-                    nextMan[fan.key] = matched.speed_fixed
-                } else {
+
+            const hasDaemonManual = !!(matched && matched.speed_fixed !== undefined && matched.speed_fixed !== null)
+            if (!dirtyManualByKey[fan.key]) {
+                if (hasDaemonManual) {
+                    nextMan[fan.key] = Math.round(matched.speed_fixed)
+                } else if (nextMan[fan.key] === undefined) {
                     const st = statusByKey[fan.key]
                     nextMan[fan.key] = (st && st.duty !== null && st.duty !== undefined)
                         ? Math.round(st.duty)
@@ -561,6 +626,21 @@ PlasmoidItem {
         return val !== undefined ? val : null
     }
 
+    function clearWriteNotice() {
+        writeNoticeTimer.stop()
+        writeNoticeText = ""
+    }
+
+    function showWriteNotice(type, text) {
+        writeNoticeType = type
+        writeNoticeText = text
+        if (type === Kirigami.MessageType.Positive && text.length > 0) {
+            writeNoticeTimer.restart()
+        } else {
+            writeNoticeTimer.stop()
+        }
+    }
+
     function setKeyPending(key, pending) {
         const next = Object.assign({}, pendingByKey)
         next[key] = pending
@@ -574,8 +654,10 @@ PlasmoidItem {
         if (status === 0) { handleOffline(); return }
 
         if (status === 403) {
-            writeNoticeType = Kirigami.MessageType.Warning
-            writeNoticeText = i18n("Write access denied (HTTP 403). Your Access Token is read-only; enable Write Access in CoolerControl.")
+            showWriteNotice(
+                Kirigami.MessageType.Warning,
+                i18n("Write access denied (HTTP 403). Your Access Token is read-only; enable Write Access in CoolerControl.")
+            )
             return
         }
         if (status >= 400) {
@@ -587,13 +669,15 @@ PlasmoidItem {
                 }
             } catch (e) {
             }
-            writeNoticeType = Kirigami.MessageType.Error
-            writeNoticeText = i18n("Failed to apply change: %1", msg)
+            showWriteNotice(
+                Kirigami.MessageType.Error,
+                i18n("Failed to apply change: %1", msg)
+            )
             return
         }
 
-        writeNoticeType = Kirigami.MessageType.Positive
-        writeNoticeText = successMsg
+        clearKeyDirty(key)
+        showWriteNotice(Kirigami.MessageType.Positive, successMsg)
         fetchDeviceSettings(devUid)
         fetchStatus()
     }
@@ -604,7 +688,7 @@ PlasmoidItem {
         }
         const key = fanKey(devUid, chName)
         setKeyPending(key, true)
-        writeNoticeText = ""
+        clearWriteNotice()
         const path = "/devices/" + encodeURIComponent(devUid)
                    + "/settings/" + encodeURIComponent(chName) + "/profile"
         sendRequest("PUT", path, { profile_uid: profileUid }, true, function(status, text, xhr) {
@@ -617,7 +701,7 @@ PlasmoidItem {
         const key = fanKey(devUid, chName)
         const clamped = Math.max(0, Math.min(100, Math.round(duty)))
         setKeyPending(key, true)
-        writeNoticeText = ""
+        clearWriteNotice()
         const path = "/devices/" + encodeURIComponent(devUid)
                    + "/settings/" + encodeURIComponent(chName) + "/manual"
         sendRequest("PUT", path, { speed_fixed: clamped }, true, function(status, text, xhr) {
@@ -629,7 +713,7 @@ PlasmoidItem {
     function applyReset(devUid, chName, displayName) {
         const key = fanKey(devUid, chName)
         setKeyPending(key, true)
-        writeNoticeText = ""
+        clearWriteNotice()
         const path = "/devices/" + encodeURIComponent(devUid)
                    + "/settings/" + encodeURIComponent(chName) + "/reset"
         sendRequest("PUT", path, null, true, function(status, text, xhr) {
@@ -859,14 +943,21 @@ PlasmoidItem {
 
             // Write result notice banner (e.g. 403 read-only or applied confirmation)
             Kirigami.InlineMessage {
+                id: writeNoticeBanner
                 Layout.fillWidth: true
-                visible: root.writeNoticeText.length > 0
                 type: root.writeNoticeType
                 text: root.writeNoticeText
                 showCloseButton: true
+                Component.onCompleted: visible = root.writeNoticeText.length > 0
                 onVisibleChanged: {
-                    if (!visible) {
-                        root.writeNoticeText = ""
+                    if (!visible && root.writeNoticeText.length > 0) {
+                        root.clearWriteNotice()
+                    }
+                }
+                Connections {
+                    target: root
+                    function onWriteNoticeTextChanged() {
+                        writeNoticeBanner.visible = root.writeNoticeText.length > 0
                     }
                 }
             }
@@ -927,6 +1018,10 @@ PlasmoidItem {
                             readonly property var liveDuty: liveStatus ? liveStatus.duty : null
                             readonly property var liveRpm: liveStatus ? liveStatus.rpm : null
                             readonly property bool isPending: !!root.pendingByKey[modelData.key]
+                            readonly property string activeMode: {
+                                const _t = root.telemetryTick
+                                return root.activeModeForFan(modelData.deviceUid, modelData.channelName)
+                            }
 
                             ColumnLayout {
                                 anchors.fill: parent
@@ -944,8 +1039,35 @@ PlasmoidItem {
                                         text: fanCard.modelData.displayName
                                     }
 
+                                    Rectangle {
+                                        id: modeBadge
+                                        readonly property color badgeColor: fanCard.activeMode === "manual"
+                                            ? Kirigami.Theme.neutralTextColor
+                                            : (fanCard.activeMode === "profile"
+                                                ? Kirigami.Theme.highlightColor
+                                                : Kirigami.Theme.disabledTextColor)
+                                        implicitWidth: modeBadgeLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
+                                        implicitHeight: modeBadgeLabel.implicitHeight + 4
+                                        radius: 4
+                                        color: Qt.rgba(badgeColor.r, badgeColor.g, badgeColor.b, 0.16)
+                                        border.width: 1
+                                        border.color: Qt.rgba(badgeColor.r, badgeColor.g, badgeColor.b, 0.45)
+
+                                        PlasmaComponents3.Label {
+                                            id: modeBadgeLabel
+                                            anchors.centerIn: parent
+                                            font: Kirigami.Theme.smallFont
+                                            color: modeBadge.badgeColor
+                                            text: fanCard.activeMode === "manual"
+                                                ? i18n("Manual")
+                                                : (fanCard.activeMode === "profile"
+                                                    ? i18n("Profile")
+                                                    : i18n("Unmanaged"))
+                                        }
+                                    }
+
                                     PlasmaComponents3.Label {
-                                        font.family: "monospace"
+                                        font: Kirigami.Theme.fixedWidthFont
                                         text: {
                                             const d = (fanCard.liveDuty !== null && fanCard.liveDuty !== undefined)
                                                 ? (Math.round(fanCard.liveDuty) + "%") : "—"
@@ -980,19 +1102,42 @@ PlasmoidItem {
                                             model: root.profilesList
                                             textRole: "name"
                                             valueRole: "uid"
-                                            currentIndex: {
+                                            function syncIndex() {
+                                                let targetIdx = root.profilesList.length > 0 ? 0 : -1
                                                 for (let i = 0; i < root.profilesList.length; ++i) {
                                                     if (root.profilesList[i].uid === profileSection.chosenProfileUid) {
-                                                        return i
+                                                        targetIdx = i
+                                                        break
                                                     }
                                                 }
-                                                return root.profilesList.length > 0 ? 0 : -1
+                                                if (currentIndex !== targetIdx) {
+                                                    currentIndex = targetIdx
+                                                }
+                                            }
+                                            onModelChanged: syncIndex()
+                                            Component.onCompleted: syncIndex()
+                                            Connections {
+                                                target: profileSection
+                                                function onChosenProfileUidChanged() {
+                                                    profCombo.syncIndex()
+                                                }
                                             }
                                             onActivated: function(idx) {
                                                 if (idx >= 0 && idx < root.profilesList.length) {
+                                                    const chosenUid = root.profilesList[idx].uid
                                                     const next = Object.assign({}, root.draftProfileByKey)
-                                                    next[fanCard.modelData.key] = root.profilesList[idx].uid
+                                                    next[fanCard.modelData.key] = chosenUid
                                                     root.draftProfileByKey = next
+
+                                                    const matched = root.findChannelSetting(fanCard.modelData.deviceUid, fanCard.modelData.channelName)
+                                                    const daemonProf = (matched && matched.profile_uid) ? matched.profile_uid : "0"
+                                                    const nextDirty = Object.assign({}, root.dirtyProfileByKey)
+                                                    if (chosenUid !== daemonProf) {
+                                                        nextDirty[fanCard.modelData.key] = true
+                                                    } else {
+                                                        delete nextDirty[fanCard.modelData.key]
+                                                    }
+                                                    root.dirtyProfileByKey = nextDirty
                                                     root.telemetryTick += 1
                                                 }
                                             }
@@ -1015,8 +1160,6 @@ PlasmoidItem {
                                         profile: profileSection.chosenProfile
                                         liveTemp: root.liveTempForProfile(profileSection.chosenProfile)
                                         liveDuty: fanCard.liveDuty
-                                        minDuty: fanCard.modelData.minDuty
-                                        maxDuty: fanCard.modelData.maxDuty
                                     }
                                 }
 
@@ -1055,16 +1198,36 @@ PlasmoidItem {
                                     }
 
                                     PlasmaComponents3.Slider {
+                                        id: manualSlider
                                         Layout.fillWidth: true
                                         from: fanCard.modelData.minDuty
                                         to: fanCard.modelData.maxDuty
                                         stepSize: 1
                                         snapMode: PlasmaComponents3.Slider.SnapAlways
-                                        value: manualSection.targetDuty
+                                        Component.onCompleted: value = manualSection.targetDuty
+                                        Connections {
+                                            target: manualSection
+                                            function onTargetDutyChanged() {
+                                                if (!manualSlider.pressed && Math.round(manualSlider.value) !== manualSection.targetDuty) {
+                                                    manualSlider.value = manualSection.targetDuty
+                                                }
+                                            }
+                                        }
                                         onMoved: {
+                                            const roundedVal = Math.round(value)
                                             const next = Object.assign({}, root.draftManualByKey)
-                                            next[fanCard.modelData.key] = Math.round(value)
+                                            next[fanCard.modelData.key] = roundedVal
                                             root.draftManualByKey = next
+
+                                            const matched = root.findChannelSetting(fanCard.modelData.deviceUid, fanCard.modelData.channelName)
+                                            const hasDaemonManual = !!(matched && matched.speed_fixed !== undefined && matched.speed_fixed !== null)
+                                            const nextDirty = Object.assign({}, root.dirtyManualByKey)
+                                            if (hasDaemonManual && roundedVal === Math.round(matched.speed_fixed)) {
+                                                delete nextDirty[fanCard.modelData.key]
+                                            } else {
+                                                nextDirty[fanCard.modelData.key] = true
+                                            }
+                                            root.dirtyManualByKey = nextDirty
                                             root.telemetryTick += 1
                                         }
                                     }

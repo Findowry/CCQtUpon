@@ -68,15 +68,24 @@ KCM.SimpleKCM {
                 { modeValue: 1, label: i18n("Fan RPM") },
                 { modeValue: 2, label: i18n("Fan Duty (%)") }
             ]
+            function syncIndex() {
+                for (let i = 0; i < model.length; ++i) {
+                    if (model[i].modeValue === configPage.cfg_panelDisplayMode) {
+                        if (currentIndex !== i) {
+                            currentIndex = i
+                        }
+                        break
+                    }
+                }
+            }
             onActivated: function(idx) {
                 configPage.cfg_panelDisplayMode = model[idx].modeValue
             }
-            Component.onCompleted: {
-                for (let i = 0; i < model.length; ++i) {
-                    if (model[i].modeValue === configPage.cfg_panelDisplayMode) {
-                        currentIndex = i
-                        break
-                    }
+            Component.onCompleted: syncIndex()
+            Connections {
+                target: configPage
+                function onCfg_panelDisplayModeChanged() {
+                    modeCombo.syncIndex()
                 }
             }
         }
