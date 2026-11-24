@@ -1,7 +1,8 @@
 #include "ui/MainWindow.h"
 
+#include "ui/AboutDialog.h"
 #include "ui/AuthDialog.h"
-#include "ui/TrayController.h"
+#include "ui/CoolingTabWidget.h"
 #include "widgets/DeviceCardWidget.h"
 #include "widgets/StatusBanner.h"
 
@@ -11,6 +12,7 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QDesktopServices>
 #include <QEvent>
 #include <QFile>
 #include <QFileDevice>
@@ -25,15 +27,18 @@
 #include <QMenuBar>
 #include <QPainter>
 #include <QPalette>
+#include <QProcess>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTime>
 #include <QTimer>
 #include <QToolBar>
+#include <QUrl>
 #include <QVBoxLayout>
 
 namespace ccqt {
@@ -75,7 +80,6 @@ private:
 
 MainWindow::MainWindow(CoolerControlClient* client,
                        AppTranslator* translator,
-                       bool trayEnabled,
                        QWidget* parent)
     : QMainWindow(parent)
     , m_client(client)
@@ -84,8 +88,6 @@ MainWindow::MainWindow(CoolerControlClient* client,
     resize(1040, 700);
     setMinimumSize(760, 500);
 
-    m_trayController = new TrayController(trayEnabled, this);
-
     buildUi();
     buildMenus();
     buildToolBar();
@@ -93,51 +95,9 @@ MainWindow::MainWindow(CoolerControlClient* client,
     loadSettings();
     retranslateUi();
     updateConnectionIndicators();
-
-    if (m_trayController != nullptr) {
-        m_trayController->setMinimizeToTrayChecked(m_minimizeToTray);
-        connect(m_trayController, &TrayController::toggleMainWindowRequested, this, [this]() {
-            if (isVisible() && !isMinimized()) {
-                hide();
-                m_trayController->setMainWindowVisible(false);
-            } else {
-                showNormal();
-                raise();
-                activateWindow();
-                m_trayController->setMainWindowVisible(true);
-            }
-        });
-        connect(m_trayController,
-                &TrayController::modeActivationRequested,
-                m_client,
-                &CoolerControlClient::activateMode);
-        connect(m_trayController, &TrayController::minimizeToTrayToggled, this, [this](bool enabled) {
-            m_minimizeToTray = enabled;
-            if (m_minimizeToTrayAction != nullptr && m_minimizeToTrayAction->isChecked() != enabled) {
-                m_minimizeToTrayAction->setChecked(enabled);
-            }
-            QSettings settings;
-            settings.setValue(QStringLiteral("ui/minimize_to_tray"), enabled);
-        });
-        connect(m_trayController, &TrayController::settingsRequested, this, [this]() {
-            if (!isVisible()) {
-                showNormal();
-                raise();
-                activateWindow();
-                m_trayController->setMainWindowVisible(true);
-            }
-            openAuthDialog();
-        });
-        connect(m_trayController, &TrayController::quitRequested, this, &MainWindow::forceQuit);
-    }
 }
 
 MainWindow::~MainWindow() = default;
-
-bool MainWindow::isTrayAvailable() const
-{
-    return m_trayController != nullptr && m_trayController->isAvailable();
-}
 
 void MainWindow::buildUi()
 {
@@ -151,7 +111,10 @@ void MainWindow::buildUi()
     connect(m_banner, &StatusBanner::retryRequested, m_client, &CoolerControlClient::retryNow);
     centralLayout->addWidget(m_banner);
 
-    m_splitter = new QSplitter(Qt::Horizontal, central);
+    m_tabs = new QTabWidget(central);
+    m_tabs->setDocumentMode(true);
+
+    m_splitter = new QSplitter(Qt::Horizontal, m_tabs);
     m_splitter->setChildrenCollapsible(false);
 
     // Left sidebar
@@ -252,7 +215,12 @@ void MainWindow::buildUi()
     m_splitter->addWidget(m_rightStack);
     m_splitter->setSizes({270, 770});
 
-    centralLayout->addWidget(m_splitter, 1);
+    m_tabs->addTab(m_splitter, QString());
+
+    m_coolingTab = new CoolingTabWidget(m_client, m_tabs);
+    m_tabs->addTab(m_coolingTab, QString());
+
+    centralLayout->addWidget(m_tabs, 1);
     setCentralWidget(central);
 
     statusBar()->setSizeGripEnabled(true);
@@ -280,24 +248,9 @@ void MainWindow::buildMenus()
 
     m_fileMenu->addSeparator();
 
-    m_minimizeToTrayAction = new QAction(this);
-    m_minimizeToTrayAction->setCheckable(true);
-    m_minimizeToTrayAction->setChecked(m_minimizeToTray);
-    connect(m_minimizeToTrayAction, &QAction::toggled, this, [this](bool checked) {
-        m_minimizeToTray = checked;
-        if (m_trayController != nullptr) {
-            m_trayController->setMinimizeToTrayChecked(checked);
-        }
-        QSettings settings;
-        settings.setValue(QStringLiteral("ui/minimize_to_tray"), checked);
-    });
-    m_fileMenu->addAction(m_minimizeToTrayAction);
-
-    m_fileMenu->addSeparator();
-
     m_quitAction = new QAction(this);
     m_quitAction->setShortcut(QKeySequence::Quit);
-    connect(m_quitAction, &QAction::triggered, this, &MainWindow::forceQuit);
+    connect(m_quitAction, &QAction::triggered, this, &QWidget::close);
     m_fileMenu->addAction(m_quitAction);
 
     m_viewMenu = menuBar()->addMenu(QString());
@@ -318,6 +271,11 @@ void MainWindow::buildMenus()
     connect(m_langTrAction, &QAction::triggered, this, [this]() {
         setLanguageAndPersist(Language::Turkish);
     });
+
+    m_helpMenu = menuBar()->addMenu(QString());
+    m_aboutAction = new QAction(this);
+    connect(m_aboutAction, &QAction::triggered, this, &MainWindow::openAboutDialog);
+    m_helpMenu->addAction(m_aboutAction);
 }
 
 void MainWindow::buildToolBar()
@@ -358,6 +316,9 @@ void MainWindow::buildToolBar()
 
     m_toolbarSettingsAction = m_toolBar->addAction(QString());
     connect(m_toolbarSettingsAction, &QAction::triggered, m_settingsAction, &QAction::trigger);
+
+    m_toolbarOpenCcAction = m_toolBar->addAction(QString());
+    connect(m_toolbarOpenCcAction, &QAction::triggered, this, &MainWindow::openInCoolerControl);
 }
 
 void MainWindow::connectClientSignals()
@@ -380,6 +341,7 @@ void MainWindow::connectClientSignals()
             this,
             &MainWindow::onActiveModesUpdated);
     connect(m_client, &CoolerControlClient::profilesUpdated, this, &MainWindow::onProfilesUpdated);
+    connect(m_client, &CoolerControlClient::functionsUpdated, this, &MainWindow::onFunctionsUpdated);
     connect(m_client,
             &CoolerControlClient::overridesUpdated,
             this,
@@ -393,6 +355,11 @@ void MainWindow::connectClientSignals()
             &CoolerControlClient::channelSettingUpdated,
             this,
             &MainWindow::onChannelSettingUpdated);
+    connect(m_client, &CoolerControlClient::profileUpdated, this, &MainWindow::onProfileUpdated);
+    connect(m_client,
+            &CoolerControlClient::profileUpdateFailed,
+            this,
+            &MainWindow::onProfileUpdateFailed);
     connect(m_client,
             &CoolerControlClient::writeOperationFailed,
             this,
@@ -404,7 +371,7 @@ void MainWindow::loadSettings()
     QSettings settings;
 
     const QString langCode = settings.value(QStringLiteral("ui/language")).toString();
-    Language lang = AppTranslator::defaultSystemLanguage();
+    Language lang = AppTranslator::defaultLanguage();
     if (!langCode.isEmpty()) {
         lang = AppTranslator::fromCode(langCode);
     }
@@ -414,11 +381,6 @@ void MainWindow::loadSettings()
     if (m_langEnAction != nullptr && m_langTrAction != nullptr) {
         m_langEnAction->setChecked(lang == Language::English);
         m_langTrAction->setChecked(lang == Language::Turkish);
-    }
-
-    m_minimizeToTray = settings.value(QStringLiteral("ui/minimize_to_tray"), true).toBool();
-    if (m_minimizeToTrayAction != nullptr) {
-        m_minimizeToTrayAction->setChecked(m_minimizeToTray);
     }
 
     m_selectedDeviceUid = settings.value(QStringLiteral("ui/selected_device")).toString();
@@ -431,6 +393,15 @@ void MainWindow::loadSettings()
     const QByteArray splitState = settings.value(QStringLiteral("ui/splitter_state")).toByteArray();
     if (!splitState.isEmpty()) {
         m_splitter->restoreState(splitState);
+    }
+    const QByteArray coolingSplit =
+        settings.value(QStringLiteral("ui/cooling_splitter_state")).toByteArray();
+    if (!coolingSplit.isEmpty() && m_coolingTab != nullptr) {
+        m_coolingTab->restoreSplitterState(coolingSplit);
+    }
+    const int activeTab = settings.value(QStringLiteral("ui/active_tab"), 0).toInt();
+    if (m_tabs != nullptr && activeTab >= 0 && activeTab < m_tabs->count()) {
+        m_tabs->setCurrentIndex(activeTab);
     }
 
     ConnectionConfig cfg;
@@ -451,7 +422,13 @@ void MainWindow::saveWindowState()
     QSettings settings;
     settings.setValue(QStringLiteral("ui/geometry"), saveGeometry());
     settings.setValue(QStringLiteral("ui/splitter_state"), m_splitter->saveState());
-    settings.setValue(QStringLiteral("ui/minimize_to_tray"), m_minimizeToTray);
+    if (m_coolingTab != nullptr) {
+        settings.setValue(QStringLiteral("ui/cooling_splitter_state"),
+                          m_coolingTab->saveSplitterState());
+    }
+    if (m_tabs != nullptr) {
+        settings.setValue(QStringLiteral("ui/active_tab"), m_tabs->currentIndex());
+    }
     settings.setValue(QStringLiteral("ui/selected_device"), m_selectedDeviceUid);
     settings.sync();
 }
@@ -485,16 +462,12 @@ void MainWindow::setLanguageAndPersist(Language lang)
     settings.sync();
 }
 
-void MainWindow::startInitialConnection(bool startMinimized)
+void MainWindow::startInitialConnection()
 {
     const ConnectionConfig cfg = m_client->config();
+    m_client->connectToDaemon();
     if (cfg.accessToken.isEmpty()) {
-        m_client->connectToDaemon();
-        if (!startMinimized) {
-            QTimer::singleShot(0, this, &MainWindow::openAuthDialog);
-        }
-    } else {
-        m_client->connectToDaemon();
+        QTimer::singleShot(0, this, &MainWindow::openAuthDialog);
     }
 }
 
@@ -519,29 +492,24 @@ void MainWindow::openAuthDialog()
     }
 }
 
-void MainWindow::forceQuit()
+void MainWindow::openAboutDialog()
 {
-    m_forceQuit = true;
-    saveWindowState();
-    m_client->disconnectFromDaemon();
-    QApplication::quit();
+    AboutDialog dlg(m_health, this);
+    dlg.exec();
+}
+
+void MainWindow::openInCoolerControl()
+{
+    if (!QProcess::startDetached(QStringLiteral("coolercontrol"), {})) {
+        QDesktopServices::openUrl(QUrl(m_client->config().baseUrl));
+    }
 }
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
     saveWindowState();
-
-    if (!m_forceQuit && m_minimizeToTray && m_trayController != nullptr
-        && m_trayController->isAvailable()) {
-        event->ignore();
-        hide();
-        m_trayController->setMainWindowVisible(false);
-        return;
-    }
-
     m_client->disconnectFromDaemon();
     event->accept();
-    QApplication::quit();
 }
 
 void MainWindow::changeEvent(QEvent* event)
@@ -560,9 +528,6 @@ void MainWindow::onConnectionStateChanged(ConnectionState state)
     }
     updateConnectionIndicators();
     updateStatusBarText();
-    if (m_trayController != nullptr) {
-        m_trayController->updateConnectionState(m_connState, m_health);
-    }
 }
 
 void MainWindow::onConnectionError(const QString& message)
@@ -582,9 +547,6 @@ void MainWindow::onHealthUpdated(const HealthInfo& health)
 {
     m_health = health;
     updateConnectionIndicators();
-    if (m_trayController != nullptr) {
-        m_trayController->updateConnectionState(m_connState, m_health);
-    }
 }
 
 void MainWindow::onDevicesUpdated(const QVector<DeviceInfo>& devices)
@@ -593,6 +555,9 @@ void MainWindow::onDevicesUpdated(const QVector<DeviceInfo>& devices)
     sortDevicesForDisplay(m_devices, m_overrides);
     refreshDevicesListUi();
     rebuildDeviceCards();
+    if (m_coolingTab != nullptr) {
+        m_coolingTab->setDevices(m_devices);
+    }
 }
 
 void MainWindow::onStatusUpdated(const QVector<DeviceStatus>& statuses)
@@ -605,6 +570,9 @@ void MainWindow::onStatusUpdated(const QVector<DeviceStatus>& statuses)
             card->updateStatus(st);
         }
     }
+    if (m_coolingTab != nullptr) {
+        m_coolingTab->updateStatus(statuses);
+    }
     updateStatusBarText();
 }
 
@@ -612,9 +580,6 @@ void MainWindow::onModesUpdated(const QVector<ModeInfo>& modes)
 {
     m_modes = modes;
     refreshModesUi();
-    if (m_trayController != nullptr) {
-        m_trayController->updateModes(m_modes, m_activeModes.currentModeUid);
-    }
 }
 
 void MainWindow::onActiveModesUpdated(const ActiveModes& activeModes)
@@ -622,9 +587,6 @@ void MainWindow::onActiveModesUpdated(const ActiveModes& activeModes)
     m_activeModes = activeModes;
     refreshModesUi();
     updateStatusBarText();
-    if (m_trayController != nullptr) {
-        m_trayController->updateModes(m_modes, m_activeModes.currentModeUid);
-    }
 }
 
 void MainWindow::onProfilesUpdated(const QVector<ProfileInfo>& profiles)
@@ -633,6 +595,16 @@ void MainWindow::onProfilesUpdated(const QVector<ProfileInfo>& profiles)
     refreshProfilesListUi();
     for (DeviceCardWidget* card : std::as_const(m_cardsByUid)) {
         card->updateProfiles(m_profiles);
+    }
+    if (m_coolingTab != nullptr) {
+        m_coolingTab->setProfiles(m_profiles);
+    }
+}
+
+void MainWindow::onFunctionsUpdated(const QVector<FunctionInfo>& functions)
+{
+    if (m_coolingTab != nullptr) {
+        m_coolingTab->setFunctions(functions);
     }
 }
 
@@ -651,6 +623,9 @@ void MainWindow::onOverridesUpdated(const NameOverrides& overrides)
             m_cardsLayout->insertWidget(i, card);
         }
     }
+    if (m_coolingTab != nullptr) {
+        m_coolingTab->setOverrides(m_overrides);
+    }
 }
 
 void MainWindow::onDeviceSettingsUpdated(const QString& deviceUid,
@@ -659,6 +634,9 @@ void MainWindow::onDeviceSettingsUpdated(const QString& deviceUid,
     m_settingsByDevice.insert(deviceUid, settings);
     if (DeviceCardWidget* card = m_cardsByUid.value(deviceUid, nullptr)) {
         card->updateSettings(settings);
+    }
+    if (m_coolingTab != nullptr) {
+        m_coolingTab->setDeviceSettings(deviceUid, settings);
     }
 }
 
@@ -679,8 +657,38 @@ void MainWindow::onChannelSettingUpdated(const QString& deviceUid, const QString
     if (DeviceCardWidget* card = m_cardsByUid.value(deviceUid, nullptr)) {
         card->setChannelPending(channelName, false);
     }
+    if (m_coolingTab != nullptr) {
+        m_coolingTab->handleChannelWriteResult(deviceUid, channelName, true);
+    }
     const QString label = resolveChannelDisplayName(deviceUid, channelName, {}, m_overrides);
     statusBar()->showMessage(tr("Channel %1 updated").arg(label), 4000);
+}
+
+void MainWindow::onProfileUpdated(const QString& profileUid)
+{
+    QString name = profileUid;
+    for (const ProfileInfo& p : std::as_const(m_profiles)) {
+        if (p.uid == profileUid) {
+            name = p.name;
+            break;
+        }
+    }
+    if (m_coolingTab != nullptr) {
+        m_coolingTab->handleProfileWriteResult(profileUid, true);
+    }
+    statusBar()->showMessage(tr("Profile '%1' saved").arg(name), 4000);
+}
+
+void MainWindow::onProfileUpdateFailed(const QString& profileUid,
+                                       const QString& message,
+                                       bool isForbidden)
+{
+    if (m_coolingTab != nullptr) {
+        m_coolingTab->handleProfileWriteResult(profileUid, false);
+    }
+    const StatusBanner::Severity sev =
+        isForbidden ? StatusBanner::Severity::Warning : StatusBanner::Severity::Error;
+    m_banner->showMessage(sev, message, isForbidden, false, true);
 }
 
 void MainWindow::onWriteOperationFailed(const QString& deviceUid,
@@ -693,11 +701,10 @@ void MainWindow::onWriteOperationFailed(const QString& deviceUid,
             card->revertChannelSelection(channelName);
         }
     }
-    // Revert mode combo and tray selection if a mode activation failed
-    refreshModesUi();
-    if (m_trayController != nullptr) {
-        m_trayController->updateModes(m_modes, m_activeModes.currentModeUid);
+    if (m_coolingTab != nullptr) {
+        m_coolingTab->handleChannelWriteResult(deviceUid, channelName, false);
     }
+    refreshModesUi();
 
     const StatusBanner::Severity sev =
         isForbidden ? StatusBanner::Severity::Warning : StatusBanner::Severity::Error;
@@ -718,7 +725,6 @@ void MainWindow::rebuildDeviceCards()
     }
 
     const QSet<QString> dups = findDuplicateDeviceNames(m_devices, m_overrides);
-    const int insertBase = 0;
     int offset = 0;
     for (const DeviceInfo& dev : std::as_const(m_devices)) {
         const bool disambiguate = dups.contains(resolveDeviceDisplayName(dev, m_overrides, false));
@@ -740,7 +746,7 @@ void MainWindow::rebuildDeviceCards()
                 m_client,
                 &CoolerControlClient::resetChannelSetting);
 
-        m_cardsLayout->insertWidget(insertBase + offset, card);
+        m_cardsLayout->insertWidget(offset, card);
         m_cardsByUid.insert(dev.uid, card);
         ++offset;
     }
@@ -759,7 +765,6 @@ void MainWindow::applyDeviceFilter()
 
 void MainWindow::refreshModesUi()
 {
-    // Sidebar modes list
     m_modesList->clear();
     const bool hasModes = !m_modes.isEmpty();
     m_modesList->setVisible(hasModes);
@@ -778,7 +783,6 @@ void MainWindow::refreshModesUi()
         }
     }
 
-    // Toolbar combo
     if (m_modeCombo->view() && m_modeCombo->view()->isVisible()) {
         return;
     }
@@ -923,7 +927,6 @@ void MainWindow::retranslateUi()
     m_fileMenu->setTitle(tr("&File"));
     m_settingsAction->setText(tr("Connection Settings..."));
     m_refreshAction->setText(tr("Refresh"));
-    m_minimizeToTrayAction->setText(tr("Minimize to Tray on Close"));
     m_quitAction->setText(tr("Quit"));
 
     m_viewMenu->setTitle(tr("&View"));
@@ -931,9 +934,13 @@ void MainWindow::retranslateUi()
     m_langEnAction->setText(tr("English"));
     m_langTrAction->setText(tr("Turkish (Türkçe)"));
 
+    m_helpMenu->setTitle(tr("&Help"));
+    m_aboutAction->setText(tr("&About CCQt Upon"));
+
     m_modeToolbarLabel->setText(tr("Active Mode:"));
     m_toolbarRefreshAction->setText(tr("Refresh"));
     m_toolbarSettingsAction->setText(tr("Connection Settings"));
+    m_toolbarOpenCcAction->setText(tr("Open in CoolerControl"));
 
     m_modesGroup->setTitle(tr("Modes"));
     m_modesEmptyLabel->setText(tr("No saved modes found in CoolerControl."));
@@ -943,6 +950,11 @@ void MainWindow::retranslateUi()
     m_emptyStateLabel->setText(
         tr("Connect to coolercontrold to view live sensors, temperatures, fan speeds, modes, and profiles."));
     m_emptySettingsButton->setText(tr("Open Connection Settings"));
+
+    if (m_tabs != nullptr) {
+        m_tabs->setTabText(0, tr("Overview"));
+        m_tabs->setTabText(1, tr("Cooling"));
+    }
 
     refreshModesUi();
     refreshDevicesListUi();
@@ -954,10 +966,6 @@ void MainWindow::retranslateUi()
         if (DeviceCardWidget* card = m_cardsByUid.value(it.key(), nullptr)) {
             card->updateStatus(it.value());
         }
-    }
-
-    if (m_trayController != nullptr) {
-        m_trayController->retranslateUi();
     }
 }
 

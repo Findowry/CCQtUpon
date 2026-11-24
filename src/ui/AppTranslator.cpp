@@ -1,7 +1,6 @@
 #include "ui/AppTranslator.h"
 
 #include <QCoreApplication>
-#include <QLocale>
 
 namespace ccqt {
 
@@ -49,10 +48,9 @@ QString AppTranslator::toCode(Language lang)
     return lang == Language::Turkish ? QStringLiteral("tr") : QStringLiteral("en");
 }
 
-Language AppTranslator::defaultSystemLanguage()
+Language AppTranslator::defaultLanguage()
 {
-    return QLocale::system().language() == QLocale::Turkish ? Language::Turkish
-                                                            : Language::English;
+    return Language::English;
 }
 
 QString AppTranslator::translate(const char* context,
@@ -85,19 +83,35 @@ void AppTranslator::initTurkishDictionary()
     add("CCQt Upon", "CCQt Upon");
     add("&File", "&Dosya");
     add("&View", "&Görünüm");
+    add("&Help", "&Yardım");
     add("&Language", "&Dil");
+    add("&About CCQt Upon", "CCQt Upon &Hakkında");
+    add("About CCQt Upon", "CCQt Upon Hakkında");
     add("English", "English");
     add("Turkish (Türkçe)", "Türkçe");
     add("Connection Settings...", "Bağlantı Ayarları...");
     add("Connection Settings", "Bağlantı Ayarları");
+    add("Open in CoolerControl", "CoolerControl'de Aç");
     add("Refresh", "Yenile");
     add("Retry", "Yeniden Dene");
     add("Retry Now", "Şimdi Dene");
     add("Dismiss", "Kapat");
-    add("Minimize to Tray on Close", "Kapatırken Tepsiye Küçült");
-    add("Show Window", "Pencereyi Göster");
-    add("Hide Window", "Pencereyi Gizle");
+    add("Close", "Kapat");
     add("Quit", "Çıkış");
+
+    // About Dialog
+    add("Ultra-lightweight native Qt6 desktop client for CoolerControl v5.1+.",
+        "CoolerControl v5.1+ için ultra hafif yerel Qt6 masaüstü istemcisi.");
+    add("Version:", "Sürüm:");
+    add("License:", "Lisans:");
+    add("MIT License", "MIT Lisansı");
+    add("Qt Version:", "Qt Sürümü:");
+    add("Daemon:", "Servis:");
+    add("Not connected", "Bağlı değil");
+
+    // Tabs
+    add("Overview", "Genel Bakış");
+    add("Cooling", "Soğutma");
 
     // Toolbar & Status
     add("Active Mode:", "Aktif Mod:");
@@ -112,19 +126,18 @@ void AppTranslator::initTurkishDictionary()
     add("Rate Limited (429)", "İstek Limiti (429)");
     add("URL: %1  |  Polling: 1s  |  Updated: %2", "URL: %1  |  Yoklama: 1 sn  |  Güncelleme: %2");
     add("URL: %1  |  Waiting for daemon...", "URL: %1  |  Servis bekleniyor...");
-    add("CCQt Upon — Connected (v%1)", "CCQt Upon — Bağlı (v%1)");
-    add("CCQt Upon — Offline", "CCQt Upon — Çevrimdışı");
-    add("CCQt Upon — Authentication Required", "CCQt Upon — Kimlik Doğrulama Gerekli");
     add("Active Mode: %1", "Aktif Mod: %1");
 
     // Sidebar
     add("Modes", "Modlar");
     add("Devices", "Cihazlar");
     add("Profiles", "Profiller");
+    add("Functions", "Fonksiyonlar");
     add("All Devices (%1)", "Tüm Cihazlar (%1)");
     add("No saved modes found in CoolerControl.", "CoolerControl içinde kayıtlı mod bulunamadı.");
     add("No devices loaded.", "Yüklü cihaz yok.");
     add("No profiles found.", "Profil bulunamadı.");
+    add("No functions found.", "Fonksiyon bulunamadı.");
 
     // Banners & Errors
     add("coolercontrold is unreachable at %1. Retrying automatically every 2 seconds...",
@@ -135,6 +148,8 @@ void AppTranslator::initTurkishDictionary()
         "Access Token tanımlanmadı. coolercontrold'ye bağlanmak için Bağlantı Ayarları'nı açın.");
     add("Write access denied (HTTP 403). Your Access Token is read-only; enable 'Write Access' to change modes or fan profiles.",
         "Yazma izni reddedildi (HTTP 403). Access Token'ınız salt-okunur; mod veya fan profili değiştirmek için 'Write Access' iznini etkinleştirin.");
+    add("Write access denied (HTTP 403). Your Access Token is read-only; enable 'Write Access' to modify profiles or fan settings.",
+        "Yazma izni reddedildi (HTTP 403). Access Token'ınız salt-okunur; profil veya fan ayarlarını değiştirmek için 'Write Access' iznini etkinleştirin.");
     add("Channel is busy or calibrating (HTTP 409): %1",
         "Kanal meşgul veya kalibrasyon sürüyor (HTTP 409): %1");
     add("Rate limited by coolercontrold (HTTP 429). Pausing requests for %1 seconds.",
@@ -158,6 +173,7 @@ void AppTranslator::initTurkishDictionary()
     add("Manual (%1%)", "Manuel (%1%)");
     add("Channel %1 updated", "%1 kanalı güncellendi");
     add("Mode '%1' activated", "'%1' modu etkinleştirildi");
+    add("Profile '%1' saved", "'%1' profili kaydedildi");
     add("%1 RPM", "%1 RPM");
     add("%1%", "%1%");
     add("%1 °C", "%1 °C");
@@ -168,6 +184,41 @@ void AppTranslator::initTurkishDictionary()
     add("Graph", "Grafik");
     add("Mix", "Karışım");
     add("Overlay", "Katman");
+    add("Identity", "Birebir");
+    add("Standard", "Standart");
+
+    // Cooling Tab
+    add("Controllable Fans", "Kontrol Edilebilir Fanlar");
+    add("No controllable fan channels detected.", "Kontrol edilebilir fan kanalı bulunamadı.");
+    add("Select a controllable fan channel from the left panel.",
+        "Sol panelden kontrol edilebilir bir fan kanalı seçin.");
+    add("Profile", "Profil");
+    add("Manual", "Manuel");
+    add("Unmanaged", "Yönetimsiz");
+    add("Apply", "Uygula");
+    add("Target: %1%", "Hedef: %1%");
+    add("Live Duty", "Anlık Duty");
+    add("Target Duty", "Hedef Duty");
+    add("Duty (%)", "Duty (%)");
+    add("RPM", "RPM");
+    add("Now", "Şimdi");
+    add("Collecting fan history...", "Fan geçmişi toplanıyor...");
+    add("Profile:", "Profil:");
+    add("Type:", "Tür:");
+    add("Temp Source:", "Sıcaklık Kaynağı:");
+    add("Function:", "Fonksiyon:");
+    add("Fixed Speed:", "Sabit Hız:");
+    add("Points", "Noktalar");
+    add("Temp (°C)", "Sıcaklık (°C)");
+    add("Add Point", "Nokta Ekle");
+    add("Remove Point", "Noktayı Sil");
+    add("Drag points · Double-click to add · Right-click point to remove",
+        "Noktaları sürükleyin · Eklemek için çift tıklayın · Silmek için noktaya sağ tıklayın");
+    add("This profile type (%1) is evaluated by coolercontrold and can be assigned directly with Apply.",
+        "Bu profil türü (%1) coolercontrold tarafından hesaplanır ve Uygula ile doğrudan atanabilir.");
+    add("Unmanaged mode hands fan control back to hardware / BIOS defaults.",
+        "Yönetimsiz mod fan kontrolünü donanım / BIOS varsayılanlarına geri devreder.");
+    add("Reset to Hardware Default", "Donanım Varsayılanına Sıfırla");
 
     // AuthDialog
     add("CoolerControl Connection Setup", "CoolerControl Bağlantı Kurulumu");

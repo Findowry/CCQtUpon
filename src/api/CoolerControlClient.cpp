@@ -174,6 +174,7 @@ void CoolerControlClient::refreshAllMetadata()
     fetchModes();
     fetchActiveModes();
     fetchProfiles();
+    fetchFunctions();
     fetchStatus();
 }
 
@@ -362,54 +363,35 @@ void CoolerControlClient::setChannelProfile(const QString& deviceUid,
     m_activeReplies.append(reply);
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, gen, deviceUid, channelName]() {
-        reply->deleteLater();
-        m_activeReplies.removeAll(reply);
-        const bool sslRejected = m_rejectedSslReplies.remove(reply);
-        if (gen != m_sessionGen) {
-            return;
-        }
+        handleChannelWriteFinished(reply, gen, deviceUid, channelName);
+    });
+}
 
-        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        const QByteArray body = reply->readAll();
+void CoolerControlClient::setChannelManual(const QString& deviceUid,
+                                           const QString& channelName,
+                                           quint8 speedFixed)
+{
+    if (deviceUid.isEmpty() || channelName.isEmpty()) {
+        return;
+    }
 
-        if (sslRejected || reply->error() != QNetworkReply::NoError || status >= 400) {
-            if (status == 403) {
-                emit writeOperationFailed(
-                    deviceUid,
-                    channelName,
-                    tr("Write access denied (HTTP 403). Your Access Token is read-only; enable 'Write Access' to change modes or fan profiles."),
-                    true);
-                return;
-            }
-            if (status == 409) {
-                emit writeOperationFailed(
-                    deviceUid,
-                    channelName,
-                    tr("Channel is busy or calibrating (HTTP 409): %1")
-                        .arg(extractApiError(body, reply->errorString())),
-                    false);
-                return;
-            }
-            if (status == 401 || status == 429 || status == 0) {
-                handleTransportOrAuthFailure(reply, status, true);
-                emit writeOperationFailed(
-                    deviceUid,
-                    channelName,
-                    tr("Failed to apply change: %1").arg(extractApiError(body, reply->errorString())),
-                    false);
-                return;
-            }
-            emit writeOperationFailed(
-                deviceUid,
-                channelName,
-                tr("Failed to apply change: %1").arg(extractApiError(body, reply->errorString())),
-                false);
-            return;
-        }
+    const quint64 gen = m_sessionGen;
+    const QString path = QStringLiteral("/devices/%1/settings/%2/manual")
+                             .arg(encodeSegment(deviceUid), encodeSegment(channelName));
 
-        emit channelSettingUpdated(deviceUid, channelName);
-        fetchDeviceSettings(deviceUid);
-        fetchActiveModes();
+    QNetworkRequest req = buildRequest(path, m_config, true);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+
+    QJsonObject payload;
+    payload.insert(QStringLiteral("speed_fixed"),
+                   static_cast<int>(std::clamp(static_cast<int>(speedFixed), 0, 100)));
+    const QByteArray jsonBytes = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+
+    QNetworkReply* reply = m_nam.put(req, jsonBytes);
+    m_activeReplies.append(reply);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, gen, deviceUid, channelName]() {
+        handleChannelWriteFinished(reply, gen, deviceUid, channelName);
     });
 }
 
@@ -428,6 +410,26 @@ void CoolerControlClient::resetChannelSetting(const QString& deviceUid, const QS
     m_activeReplies.append(reply);
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, gen, deviceUid, channelName]() {
+        handleChannelWriteFinished(reply, gen, deviceUid, channelName);
+    });
+}
+
+void CoolerControlClient::updateProfile(const ProfileInfo& profile)
+{
+    if (profile.uid.isEmpty()) {
+        return;
+    }
+
+    const quint64 gen = m_sessionGen;
+    QNetworkRequest req = buildRequest(QStringLiteral("/profiles"), m_config, true);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+
+    const QByteArray jsonBytes = serializeProfile(profile);
+    QNetworkReply* reply = m_nam.put(req, jsonBytes);
+    m_activeReplies.append(reply);
+
+    const QString uid = profile.uid;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, gen, uid]() {
         reply->deleteLater();
         m_activeReplies.removeAll(reply);
         const bool sslRejected = m_rejectedSslReplies.remove(reply);
@@ -440,17 +442,15 @@ void CoolerControlClient::resetChannelSetting(const QString& deviceUid, const QS
 
         if (sslRejected || reply->error() != QNetworkReply::NoError || status >= 400) {
             if (status == 403) {
-                emit writeOperationFailed(
-                    deviceUid,
-                    channelName,
-                    tr("Write access denied (HTTP 403). Your Access Token is read-only; enable 'Write Access' to change modes or fan profiles."),
+                emit profileUpdateFailed(
+                    uid,
+                    tr("Write access denied (HTTP 403). Your Access Token is read-only; enable 'Write Access' to modify profiles or fan settings."),
                     true);
                 return;
             }
             if (status == 409) {
-                emit writeOperationFailed(
-                    deviceUid,
-                    channelName,
+                emit profileUpdateFailed(
+                    uid,
                     tr("Channel is busy or calibrating (HTTP 409): %1")
                         .arg(extractApiError(body, reply->errorString())),
                     false);
@@ -458,25 +458,66 @@ void CoolerControlClient::resetChannelSetting(const QString& deviceUid, const QS
             }
             if (status == 401 || status == 429 || status == 0) {
                 handleTransportOrAuthFailure(reply, status, true);
-                emit writeOperationFailed(
-                    deviceUid,
-                    channelName,
-                    tr("Failed to apply change: %1").arg(extractApiError(body, reply->errorString())),
-                    false);
-                return;
             }
-            emit writeOperationFailed(
-                deviceUid,
-                channelName,
+            emit profileUpdateFailed(
+                uid,
                 tr("Failed to apply change: %1").arg(extractApiError(body, reply->errorString())),
                 false);
             return;
         }
 
-        emit channelSettingUpdated(deviceUid, channelName);
-        fetchDeviceSettings(deviceUid);
-        fetchActiveModes();
+        emit profileUpdated(uid);
+        fetchProfiles();
     });
+}
+
+void CoolerControlClient::handleChannelWriteFinished(QNetworkReply* reply,
+                                                     quint64 gen,
+                                                     const QString& deviceUid,
+                                                     const QString& channelName)
+{
+    reply->deleteLater();
+    m_activeReplies.removeAll(reply);
+    const bool sslRejected = m_rejectedSslReplies.remove(reply);
+    if (gen != m_sessionGen) {
+        return;
+    }
+
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const QByteArray body = reply->readAll();
+
+    if (sslRejected || reply->error() != QNetworkReply::NoError || status >= 400) {
+        if (status == 403) {
+            emit writeOperationFailed(
+                deviceUid,
+                channelName,
+                tr("Write access denied (HTTP 403). Your Access Token is read-only; enable 'Write Access' to change modes or fan profiles."),
+                true);
+            return;
+        }
+        if (status == 409) {
+            emit writeOperationFailed(
+                deviceUid,
+                channelName,
+                tr("Channel is busy or calibrating (HTTP 409): %1")
+                    .arg(extractApiError(body, reply->errorString())),
+                false);
+            return;
+        }
+        if (status == 401 || status == 429 || status == 0) {
+            handleTransportOrAuthFailure(reply, status, true);
+        }
+        emit writeOperationFailed(
+            deviceUid,
+            channelName,
+            tr("Failed to apply change: %1").arg(extractApiError(body, reply->errorString())),
+            false);
+        return;
+    }
+
+    emit channelSettingUpdated(deviceUid, channelName);
+    fetchDeviceSettings(deviceUid);
+    fetchActiveModes();
 }
 
 void CoolerControlClient::onSslErrors(QNetworkReply* reply, const QList<QSslError>& errors)
@@ -836,6 +877,33 @@ void CoolerControlClient::fetchProfiles()
 
         if (const auto parsed = parseProfiles(body)) {
             emit profilesUpdated(*parsed);
+        }
+    });
+}
+
+void CoolerControlClient::fetchFunctions()
+{
+    const quint64 gen = m_sessionGen;
+    QNetworkReply* reply = m_nam.get(buildRequest(QStringLiteral("/functions"), m_config, true));
+    m_activeReplies.append(reply);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, gen]() {
+        reply->deleteLater();
+        m_activeReplies.removeAll(reply);
+        const bool sslRejected = m_rejectedSslReplies.remove(reply);
+        if (gen != m_sessionGen) {
+            return;
+        }
+
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray body = reply->readAll();
+        if (sslRejected || reply->error() != QNetworkReply::NoError || status >= 400) {
+            handleTransportOrAuthFailure(reply, status, false);
+            return;
+        }
+
+        if (const auto parsed = parseFunctions(body)) {
+            emit functionsUpdated(*parsed);
         }
     });
 }

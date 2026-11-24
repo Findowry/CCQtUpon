@@ -85,6 +85,8 @@ void testDevicesAndSorting()
             "temps": {},
             "temp_min": 0,
             "temp_max": 150,
+            "profile_min_length": 2,
+            "profile_max_length": 21,
             "model": null,
             "driver_info": { "drv_type": "Kernel", "name": "hp-wmi", "version": "7.3.5" }
           }
@@ -156,6 +158,8 @@ void testDevicesAndSorting()
     CHECK(hp.channels.at(1).name == QLatin1String("fan2"));
     CHECK(hp.channels.at(2).name == QLatin1String("fan10"));
     CHECK(hp.temps.isEmpty());
+    CHECK(hp.profileMinLength == 2);
+    CHECK(hp.profileMaxLength == 21);
 
     CHECK(ccqt::resolveDeviceDisplayName(hp, overrides) == QLatin1String("Laptop Fans"));
     CHECK(ccqt::resolveChannelDisplayName(hp.uid, QStringLiteral("fan1"), hp.channels.at(0).label, overrides)
@@ -348,6 +352,132 @@ void testSettingsModesAndProfiles()
     CHECK(profiles->at(3).mixFunctionType == QLatin1String("Max"));
     CHECK(profiles->at(3).memberProfileUids.size() == 2);
     CHECK(profiles->at(4).type == QLatin1String("Overlay"));
+    CHECK(profiles->at(4).offsetProfile.size() == 1);
+    CHECK(profiles->at(4).offsetProfile.at(0).first == 50);
+    CHECK(profiles->at(4).offsetProfile.at(0).second == 10);
+}
+
+void testFunctionsAndProfileSerialization()
+{
+    const QByteArray fnPayload = R"json({
+      "functions": [
+        {
+          "uid": "0",
+          "name": "Default Function",
+          "f_type": "Identity",
+          "duty_minimum": 2,
+          "duty_maximum": 100,
+          "step_size_min_decreasing": 0,
+          "step_size_max_decreasing": 0,
+          "threshold_hopping": true,
+          "bypass_min_at_extremes": false
+        },
+        {
+          "uid": "fn-std",
+          "name": "Smooth Standard",
+          "f_type": "Standard",
+          "duty_minimum": 1,
+          "duty_maximum": 15,
+          "step_size_min_decreasing": 1,
+          "step_size_max_decreasing": 10,
+          "threshold_hopping": true,
+          "bypass_min_at_extremes": true,
+          "deviance": 2.5,
+          "only_downward": true,
+          "response_delay": 3
+        }
+      ]
+    })json";
+
+    const auto fns = ccqt::parseFunctions(fnPayload);
+    CHECK(fns.has_value());
+    CHECK(fns->size() == 2);
+    CHECK(fns->at(0).uid == QLatin1String("0"));
+    CHECK(fns->at(0).type == QLatin1String("Identity"));
+    CHECK(!fns->at(0).deviance.has_value());
+    CHECK(fns->at(1).type == QLatin1String("Standard"));
+    CHECK(fns->at(1).dutyMinimum == 1);
+    CHECK(fns->at(1).dutyMaximum == 15);
+    CHECK(fns->at(1).bypassMinAtExtremes);
+    CHECK(fns->at(1).deviance == 2.5);
+    CHECK(fns->at(1).onlyDownward == true);
+    CHECK(fns->at(1).responseDelay == 3);
+    CHECK(!ccqt::parseFunctions("{\"functions\":null}").has_value());
+
+    // Graph profile round-trip with sorting & rounding
+    ccqt::ProfileInfo graph;
+    graph.uid = QStringLiteral("p-graph");
+    graph.name = QStringLiteral("Custom Curve");
+    graph.functionUid = QStringLiteral("fn-std");
+    graph.type = QStringLiteral("Graph");
+    graph.tempMin = 30.0;
+    graph.tempMax = 95.0;
+    graph.tempSource = ccqt::TempSource{QStringLiteral("uid-cpu"), QStringLiteral("temp2")};
+    graph.speedProfile = {{75.24, 65}, {40.0, 20}, {90.0, 100}};
+
+    const QByteArray wrappedGraph = QByteArrayLiteral("{\"profiles\":[") + ccqt::serializeProfile(graph)
+        + QByteArrayLiteral("]}");
+    const auto parsedGraph = ccqt::parseProfiles(wrappedGraph);
+    CHECK(parsedGraph.has_value());
+    CHECK(parsedGraph->size() == 1);
+    CHECK(parsedGraph->at(0).type == QLatin1String("Graph"));
+    CHECK(parsedGraph->at(0).speedProfile.size() == 3);
+    CHECK(parsedGraph->at(0).speedProfile.at(0).first == 40.0);
+    CHECK(parsedGraph->at(0).speedProfile.at(1).first == 75.2);
+    CHECK(parsedGraph->at(0).speedProfile.at(1).second == 65);
+    CHECK(parsedGraph->at(0).speedProfile.at(2).first == 90.0);
+    CHECK(parsedGraph->at(0).tempSource.has_value());
+    CHECK(parsedGraph->at(0).tempSource->deviceUid == QLatin1String("uid-cpu"));
+
+    // Fixed & Default & Mix & Overlay round-trip
+    ccqt::ProfileInfo fixed;
+    fixed.uid = QStringLiteral("p-fixed");
+    fixed.name = QStringLiteral("Constant 55");
+    fixed.functionUid = QStringLiteral("0");
+    fixed.type = QStringLiteral("Fixed");
+    fixed.speedFixed = 55;
+
+    const auto parsedFixed = ccqt::parseProfiles(
+        QByteArrayLiteral("{\"profiles\":[") + ccqt::serializeProfile(fixed) + QByteArrayLiteral("]}"));
+    CHECK(parsedFixed.has_value() && parsedFixed->size() == 1);
+    CHECK(parsedFixed->at(0).type == QLatin1String("Fixed"));
+    CHECK(parsedFixed->at(0).speedFixed == 55);
+
+    ccqt::ProfileInfo def;
+    def.uid = QStringLiteral("0");
+    def.name = QStringLiteral("Unmanaged");
+    def.type = QStringLiteral("Default");
+    const auto parsedDef = ccqt::parseProfiles(
+        QByteArrayLiteral("{\"profiles\":[") + ccqt::serializeProfile(def) + QByteArrayLiteral("]}"));
+    CHECK(parsedDef.has_value() && parsedDef->size() == 1);
+    CHECK(parsedDef->at(0).type == QLatin1String("Default"));
+    CHECK(parsedDef->at(0).functionUid == QLatin1String("0"));
+
+    ccqt::ProfileInfo mix;
+    mix.uid = QStringLiteral("p-mix");
+    mix.name = QStringLiteral("Mix Max");
+    mix.functionUid = QStringLiteral("0");
+    mix.type = QStringLiteral("Mix");
+    mix.memberProfileUids = {QStringLiteral("p-graph"), QStringLiteral("p-fixed")};
+    mix.mixFunctionType = QStringLiteral("Max");
+    const auto parsedMix = ccqt::parseProfiles(
+        QByteArrayLiteral("{\"profiles\":[") + ccqt::serializeProfile(mix) + QByteArrayLiteral("]}"));
+    CHECK(parsedMix.has_value() && parsedMix->size() == 1);
+    CHECK(parsedMix->at(0).memberProfileUids.size() == 2);
+    CHECK(parsedMix->at(0).mixFunctionType == QLatin1String("Max"));
+
+    ccqt::ProfileInfo overlay;
+    overlay.uid = QStringLiteral("p-ov");
+    overlay.name = QStringLiteral("Overlay +5");
+    overlay.functionUid = QStringLiteral("0");
+    overlay.type = QStringLiteral("Overlay");
+    overlay.memberProfileUids = {QStringLiteral("p-graph")};
+    overlay.offsetProfile = {{40, 5}, {80, -3}};
+    const auto parsedOv = ccqt::parseProfiles(
+        QByteArrayLiteral("{\"profiles\":[") + ccqt::serializeProfile(overlay) + QByteArrayLiteral("]}"));
+    CHECK(parsedOv.has_value() && parsedOv->size() == 1);
+    CHECK(parsedOv->at(0).offsetProfile.size() == 2);
+    CHECK(parsedOv->at(0).offsetProfile.at(1).second == -3);
 }
 
 void testInvalidInputs()
@@ -390,6 +520,7 @@ int main(int argc, char* argv[])
     testDevicesAndSorting();
     testStatusParsing();
     testSettingsModesAndProfiles();
+    testFunctionsAndProfileSerialization();
     testInvalidInputs();
     testUrlAndTlsHelpers();
 

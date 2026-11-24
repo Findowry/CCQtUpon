@@ -138,10 +138,13 @@ void DeviceCardWidget::buildUi()
 
             if (ch.isControllable()) {
                 row.profileCombo = new QComboBox(this);
-                row.profileCombo->setSizeAdjustPolicy(
-                    QComboBox::AdjustToMinimumContentsLengthWithIcon);
-                row.profileCombo->setMinimumContentsLength(16);
+                row.profileCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+                row.profileCombo->setMinimumContentsLength(26);
                 row.profileCombo->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+                connect(row.profileCombo,
+                        &QComboBox::currentTextChanged,
+                        row.profileCombo,
+                        &QComboBox::setToolTip);
                 grid->addWidget(row.profileCombo, rowIdx, 3, Qt::AlignVCenter);
 
                 row.resetButton = new QPushButton(this);
@@ -395,18 +398,30 @@ void DeviceCardWidget::populateChannelCombo(ChannelRow& row)
 
     row.profileCombo->clear();
 
+    const QFontMetrics fm = row.profileCombo->fontMetrics();
+    int maxLabelWidth = 0;
+
     int targetIdx = -1;
     for (const ProfileInfo& p : m_profiles) {
-        row.profileCombo->addItem(formatProfileLabel(p), p.uid);
+        const QString label = formatProfileLabel(p);
+        row.profileCombo->addItem(label, p.uid);
+        row.profileCombo->setItemData(row.profileCombo->count() - 1, label, Qt::ToolTipRole);
+        maxLabelWidth = std::max(maxLabelWidth, fm.horizontalAdvance(label));
         if (!row.activeManualDuty.has_value() && p.uid == row.activeProfileUid) {
             targetIdx = row.profileCombo->count() - 1;
         }
     }
 
     if (row.activeManualDuty.has_value()) {
-        row.profileCombo->addItem(tr("Manual (%1%)").arg(*row.activeManualDuty),
-                                  QStringLiteral("__manual__"));
+        const QString manualLabel = tr("Manual (%1%)").arg(*row.activeManualDuty);
+        row.profileCombo->addItem(manualLabel, QStringLiteral("__manual__"));
+        row.profileCombo->setItemData(row.profileCombo->count() - 1, manualLabel, Qt::ToolTipRole);
+        maxLabelWidth = std::max(maxLabelWidth, fm.horizontalAdvance(manualLabel));
         targetIdx = row.profileCombo->count() - 1;
+    }
+
+    if (row.profileCombo->view() != nullptr && maxLabelWidth > 0) {
+        row.profileCombo->view()->setMinimumWidth(maxLabelWidth + 36);
     }
 
     if (targetIdx >= 0) {
@@ -414,6 +429,7 @@ void DeviceCardWidget::populateChannelCombo(ChannelRow& row)
     } else if (row.profileCombo->count() > 0) {
         row.profileCombo->setCurrentIndex(0);
     }
+    row.profileCombo->setToolTip(row.profileCombo->currentText());
 }
 
 QString DeviceCardWidget::formatProfileLabel(const ProfileInfo& profile) const

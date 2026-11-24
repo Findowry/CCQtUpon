@@ -62,6 +62,8 @@ struct DeviceInfo {
     QString model;
     quint8 tempMin = 0;
     quint8 tempMax = 100;
+    quint8 profileMinLength = 2;
+    quint8 profileMaxLength = 21;
     DriverInfo driverInfo;
     QVector<ChannelInfo> channels;
     QVector<TempInfo> temps;
@@ -132,6 +134,28 @@ struct ProfileInfo {
     std::optional<double> tempMax;
     QStringList memberProfileUids;
     QString mixFunctionType;
+    QVector<QPair<quint8, qint8>> offsetProfile;
+};
+
+struct FunctionInfo {
+    QString uid;
+    QString name;
+    QString type;
+    quint8 dutyMinimum = 2;
+    quint8 dutyMaximum = 100;
+    quint8 stepSizeMinDecreasing = 0;
+    quint8 stepSizeMaxDecreasing = 0;
+    bool thresholdHopping = true;
+    bool bypassMinAtExtremes = false;
+    std::optional<double> deviance;
+    std::optional<bool> onlyDownward;
+    std::optional<quint8> responseDelay;
+};
+
+struct FanHistoryPoint {
+    qint64 timestampMs = 0;
+    std::optional<double> duty;
+    std::optional<quint32> rpm;
 };
 
 struct DeviceOverride {
@@ -149,7 +173,9 @@ std::optional<QVector<ChannelSetting>> parseDeviceSettings(const QByteArray& dat
 std::optional<QVector<ModeInfo>> parseModes(const QByteArray& data);
 std::optional<ActiveModes> parseActiveModes(const QByteArray& data);
 std::optional<QVector<ProfileInfo>> parseProfiles(const QByteArray& data);
+std::optional<QVector<FunctionInfo>> parseFunctions(const QByteArray& data);
 NameOverrides parseOverrides(const QByteArray& data);
+QByteArray serializeProfile(const ProfileInfo& profile);
 
 QString resolveDeviceDisplayName(const DeviceInfo& device,
                                  const NameOverrides& overrides,

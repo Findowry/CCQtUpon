@@ -22,7 +22,7 @@ public:
 
     static Language fromCode(const QString& code);
     static QString toCode(Language lang);
-    static Language defaultSystemLanguage();
+    static Language defaultLanguage();
 
     QString translate(const char* context,
                       const char* sourceText,

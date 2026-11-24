@@ -39,10 +39,12 @@ target_compile_options(ccqtupon_core
 
 add_executable(ccqtupon
     src/main.cpp
+    src/ui/AboutDialog.h
+    src/ui/AboutDialog.cpp
     src/ui/AuthDialog.h
     src/ui/AuthDialog.cpp
-    src/ui/TrayController.h
-    src/ui/TrayController.cpp
+    src/ui/CoolingTabWidget.h
+    src/ui/CoolingTabWidget.cpp
     src/ui/MainWindow.h
     src/ui/MainWindow.cpp
     src/widgets/StatusBanner.h
@@ -51,6 +53,12 @@ add_executable(ccqtupon
     src/widgets/MetricBarWidget.cpp
     src/widgets/DeviceCardWidget.h
     src/widgets/DeviceCardWidget.cpp
+    src/widgets/FanGaugeWidget.h
+    src/widgets/FanGaugeWidget.cpp
+    src/widgets/FanHistoryChartWidget.h
+    src/widgets/FanHistoryChartWidget.cpp
+    src/widgets/FanCurveEditorWidget.h
+    src/widgets/FanCurveEditorWidget.cpp
 )
 
 target_link_libraries(ccqtupon

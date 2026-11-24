@@ -64,7 +64,11 @@ public:
     void setChannelProfile(const QString& deviceUid,
                            const QString& channelName,
                            const QString& profileUid);
+    void setChannelManual(const QString& deviceUid,
+                          const QString& channelName,
+                          quint8 speedFixed);
     void resetChannelSetting(const QString& deviceUid, const QString& channelName);
+    void updateProfile(const ProfileInfo& profile);
 
 signals:
     void connectionStateChanged(ccqt::ConnectionState state);
@@ -78,12 +82,17 @@ signals:
     void modesUpdated(const QVector<ccqt::ModeInfo>& modes);
     void activeModesUpdated(const ccqt::ActiveModes& activeModes);
     void profilesUpdated(const QVector<ccqt::ProfileInfo>& profiles);
+    void functionsUpdated(const QVector<ccqt::FunctionInfo>& functions);
     void overridesUpdated(const ccqt::NameOverrides& overrides);
     void deviceSettingsUpdated(const QString& deviceUid,
                                const QVector<ccqt::ChannelSetting>& settings);
 
     void modeActivated(const QString& modeUid);
     void channelSettingUpdated(const QString& deviceUid, const QString& channelName);
+    void profileUpdated(const QString& profileUid);
+    void profileUpdateFailed(const QString& profileUid,
+                             const QString& message,
+                             bool isForbidden);
     void writeOperationFailed(const QString& deviceUid,
                               const QString& channelName,
                               const QString& message,
@@ -118,10 +127,15 @@ private:
     void fetchModes();
     void fetchActiveModes();
     void fetchProfiles();
+    void fetchFunctions();
     void fetchOverrides();
     void fetchAllDeviceSettings();
     void fetchDeviceSettings(const QString& deviceUid);
 
+    void handleChannelWriteFinished(QNetworkReply* reply,
+                                    quint64 gen,
+                                    const QString& deviceUid,
+                                    const QString& channelName);
     void handleTransportOrAuthFailure(QNetworkReply* reply, int httpStatus, bool isWriteOp);
     static QString extractApiError(const QByteArray& body, const QString& fallback);
     static int parseRetryAfterSeconds(QNetworkReply* reply);

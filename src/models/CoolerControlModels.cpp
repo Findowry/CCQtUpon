@@ -8,6 +8,7 @@
 #include <QJsonValue>
 
 #include <algorithm>
+#include <cmath>
 
 namespace ccqt {
 namespace {
@@ -217,6 +218,10 @@ std::optional<QVector<DeviceInfo>> parseDevices(const QByteArray& data)
         }
         dev.tempMin = clampU8(infoObj.value(QStringLiteral("temp_min")).toInt(0));
         dev.tempMax = clampU8(infoObj.value(QStringLiteral("temp_max")).toInt(100));
+        const int minLen = std::max(2, infoObj.value(QStringLiteral("profile_min_length")).toInt(2));
+        const int maxLen = std::max(minLen, infoObj.value(QStringLiteral("profile_max_length")).toInt(21));
+        dev.profileMinLength = clampU8(minLen);
+        dev.profileMaxLength = clampU8(maxLen);
 
         const QJsonObject drvObj = infoObj.value(QStringLiteral("driver_info")).toObject();
         dev.driverInfo.drvType = drvObj.value(QStringLiteral("drv_type")).toString();
@@ -573,10 +578,151 @@ std::optional<QVector<ProfileInfo>> parseProfiles(const QByteArray& data)
             p.mixFunctionType = mixVal.toString();
         }
 
+        const QJsonValue opVal = obj.value(QStringLiteral("offset_profile"));
+        if (opVal.isArray()) {
+            const QJsonArray opArr = opVal.toArray();
+            p.offsetProfile.reserve(opArr.size());
+            for (const QJsonValue& ptVal : opArr) {
+                if (!ptVal.isArray()) {
+                    continue;
+                }
+                const QJsonArray pt = ptVal.toArray();
+                if (pt.size() >= 2 && pt.at(0).isDouble() && pt.at(1).isDouble()) {
+                    const quint8 duty = clampU8(pt.at(0).toInt());
+                    const qint8 off = static_cast<qint8>(std::clamp(pt.at(1).toInt(), -128, 127));
+                    p.offsetProfile.append({duty, off});
+                }
+            }
+        }
+
         result.append(std::move(p));
     }
 
     return result;
+}
+
+std::optional<QVector<FunctionInfo>> parseFunctions(const QByteArray& data)
+{
+    const auto root = parseRootObject(data);
+    if (!root.has_value()) {
+        return std::nullopt;
+    }
+
+    const QJsonValue fnVal = root->value(QStringLiteral("functions"));
+    if (!fnVal.isArray()) {
+        return std::nullopt;
+    }
+
+    const QJsonArray arr = fnVal.toArray();
+    QVector<FunctionInfo> result;
+    result.reserve(arr.size());
+
+    for (const QJsonValue& item : arr) {
+        if (!item.isObject()) {
+            continue;
+        }
+        const QJsonObject obj = item.toObject();
+        const QString uid = obj.value(QStringLiteral("uid")).toString();
+        if (uid.isEmpty()) {
+            continue;
+        }
+
+        FunctionInfo fn;
+        fn.uid = uid;
+        fn.name = obj.value(QStringLiteral("name")).toString();
+        fn.type = obj.value(QStringLiteral("f_type")).toString();
+        if (fn.type.isEmpty()) {
+            fn.type = QStringLiteral("Identity");
+        }
+        fn.dutyMinimum = clampU8(obj.value(QStringLiteral("duty_minimum")).toInt(2));
+        fn.dutyMaximum = clampU8(obj.value(QStringLiteral("duty_maximum")).toInt(100));
+        fn.stepSizeMinDecreasing =
+            clampU8(obj.value(QStringLiteral("step_size_min_decreasing")).toInt(0));
+        fn.stepSizeMaxDecreasing =
+            clampU8(obj.value(QStringLiteral("step_size_max_decreasing")).toInt(0));
+        fn.thresholdHopping = obj.value(QStringLiteral("threshold_hopping")).toBool(true);
+        fn.bypassMinAtExtremes = obj.value(QStringLiteral("bypass_min_at_extremes")).toBool(false);
+        fn.deviance = optionalDouble(obj, QStringLiteral("deviance"));
+        if (obj.value(QStringLiteral("only_downward")).isBool()) {
+            fn.onlyDownward = obj.value(QStringLiteral("only_downward")).toBool();
+        }
+        fn.responseDelay = optionalU8(obj, QStringLiteral("response_delay"));
+
+        result.append(std::move(fn));
+    }
+
+    return result;
+}
+
+QByteArray serializeProfile(const ProfileInfo& profile)
+{
+    const QString pType = profile.type.isEmpty() ? QStringLiteral("Default") : profile.type;
+
+    QJsonObject obj;
+    obj.insert(QStringLiteral("uid"), profile.uid);
+    obj.insert(QStringLiteral("name"), profile.name);
+    obj.insert(QStringLiteral("function_uid"),
+               profile.functionUid.isEmpty() ? QStringLiteral("0") : profile.functionUid);
+    obj.insert(QStringLiteral("p_type"), pType);
+
+    if (pType == QLatin1String("Graph")) {
+        QVector<QPair<double, quint8>> sorted = profile.speedProfile;
+        std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
+            return a.first < b.first;
+        });
+
+        QJsonArray spArr;
+        for (const auto& pt : sorted) {
+            const double roundedTemp = std::round(pt.first * 10.0) / 10.0;
+            const int duty = std::clamp(static_cast<int>(pt.second), 0, 100);
+            QJsonArray pair;
+            pair.append(roundedTemp);
+            pair.append(duty);
+            spArr.append(pair);
+        }
+        obj.insert(QStringLiteral("speed_profile"), spArr);
+
+        if (profile.tempSource.has_value()) {
+            QJsonObject tsObj;
+            tsObj.insert(QStringLiteral("device_uid"), profile.tempSource->deviceUid);
+            tsObj.insert(QStringLiteral("temp_name"), profile.tempSource->tempName);
+            obj.insert(QStringLiteral("temp_source"), tsObj);
+        }
+        if (profile.tempMin.has_value()) {
+            obj.insert(QStringLiteral("temp_min"), std::round(*profile.tempMin * 10.0) / 10.0);
+        }
+        if (profile.tempMax.has_value()) {
+            obj.insert(QStringLiteral("temp_max"), std::round(*profile.tempMax * 10.0) / 10.0);
+        }
+    } else if (pType == QLatin1String("Fixed")) {
+        const int fixedDuty = std::clamp(static_cast<int>(profile.speedFixed.value_or(50)), 0, 100);
+        obj.insert(QStringLiteral("speed_fixed"), fixedDuty);
+    } else if (pType == QLatin1String("Mix")) {
+        QJsonArray members;
+        for (const QString& uid : profile.memberProfileUids) {
+            members.append(uid);
+        }
+        obj.insert(QStringLiteral("member_profile_uids"), members);
+        if (!profile.mixFunctionType.isEmpty()) {
+            obj.insert(QStringLiteral("mix_function_type"), profile.mixFunctionType);
+        }
+    } else if (pType == QLatin1String("Overlay")) {
+        QJsonArray members;
+        for (const QString& uid : profile.memberProfileUids) {
+            members.append(uid);
+        }
+        obj.insert(QStringLiteral("member_profile_uids"), members);
+        QJsonArray opArr;
+        for (const auto& pt : profile.offsetProfile) {
+            QJsonArray pair;
+            pair.append(static_cast<int>(std::clamp(static_cast<int>(pt.first), 0, 100)));
+            pair.append(static_cast<int>(pt.second));
+            opArr.append(pair);
+        }
+        obj.insert(QStringLiteral("offset_profile"), opArr);
+    }
+
+    return QJsonDocument(obj).toJson(QJsonDocument::Compact);
 }
 
 NameOverrides parseOverrides(const QByteArray& data)

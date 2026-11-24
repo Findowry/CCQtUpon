@@ -22,14 +22,15 @@ class QPushButton;
 class QScrollArea;
 class QSplitter;
 class QStackedWidget;
+class QTabWidget;
 class QToolBar;
 class QVBoxLayout;
 
 namespace ccqt {
 
+class CoolingTabWidget;
 class DeviceCardWidget;
 class StatusBanner;
-class TrayController;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -37,16 +38,15 @@ class MainWindow : public QMainWindow {
 public:
     MainWindow(CoolerControlClient* client,
                AppTranslator* translator,
-               bool trayEnabled,
                QWidget* parent = nullptr);
     ~MainWindow() override;
 
-    bool isTrayAvailable() const;
-    void startInitialConnection(bool startMinimized);
+    void startInitialConnection();
 
 public slots:
     void openAuthDialog();
-    void forceQuit();
+    void openAboutDialog();
+    void openInCoolerControl();
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -62,11 +62,16 @@ private slots:
     void onModesUpdated(const QVector<ccqt::ModeInfo>& modes);
     void onActiveModesUpdated(const ccqt::ActiveModes& activeModes);
     void onProfilesUpdated(const QVector<ccqt::ProfileInfo>& profiles);
+    void onFunctionsUpdated(const QVector<ccqt::FunctionInfo>& functions);
     void onOverridesUpdated(const ccqt::NameOverrides& overrides);
     void onDeviceSettingsUpdated(const QString& deviceUid,
                                  const QVector<ccqt::ChannelSetting>& settings);
     void onModeActivated(const QString& modeUid);
     void onChannelSettingUpdated(const QString& deviceUid, const QString& channelName);
+    void onProfileUpdated(const QString& profileUid);
+    void onProfileUpdateFailed(const QString& profileUid,
+                               const QString& message,
+                               bool isForbidden);
     void onWriteOperationFailed(const QString& deviceUid,
                                 const QString& channelName,
                                 const QString& message,
@@ -96,12 +101,9 @@ private:
 
     CoolerControlClient* m_client = nullptr;
     AppTranslator* m_translator = nullptr;
-    TrayController* m_trayController = nullptr;
 
     // Settings state
     bool m_saveToken = true;
-    bool m_minimizeToTray = true;
-    bool m_forceQuit = false;
     QString m_selectedDeviceUid;
     QString m_lastUpdateTimeStr;
 
@@ -120,13 +122,14 @@ private:
     QMenu* m_fileMenu = nullptr;
     QMenu* m_viewMenu = nullptr;
     QMenu* m_langMenu = nullptr;
+    QMenu* m_helpMenu = nullptr;
     QAction* m_settingsAction = nullptr;
     QAction* m_refreshAction = nullptr;
-    QAction* m_minimizeToTrayAction = nullptr;
     QAction* m_quitAction = nullptr;
     QActionGroup* m_langGroup = nullptr;
     QAction* m_langEnAction = nullptr;
     QAction* m_langTrAction = nullptr;
+    QAction* m_aboutAction = nullptr;
 
     // Toolbar
     QToolBar* m_toolBar = nullptr;
@@ -136,10 +139,13 @@ private:
     QLabel* m_connBadgeLabel = nullptr;
     QAction* m_toolbarRefreshAction = nullptr;
     QAction* m_toolbarSettingsAction = nullptr;
+    QAction* m_toolbarOpenCcAction = nullptr;
 
     // Central widgets
     StatusBanner* m_banner = nullptr;
+    QTabWidget* m_tabs = nullptr;
     QSplitter* m_splitter = nullptr;
+    CoolingTabWidget* m_coolingTab = nullptr;
 
     QGroupBox* m_modesGroup = nullptr;
     QListWidget* m_modesList = nullptr;
